@@ -14,7 +14,6 @@ Message::Message(MessageType type) : Message()
 }
 
 //消息头字段操作
-
 void Message::setType(MessageType type)
 {
     m_header.type = static_cast<uint16_t>(type);

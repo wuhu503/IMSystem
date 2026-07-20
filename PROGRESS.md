@@ -16,6 +16,22 @@
 
 ### 2026-07-20
 
+#### ✅ 4. 公共模块 - utils.h / utils.cpp（工具函数）
+- [x] 创建 Utils 命名空间
+- [x] 实现密码加密功能
+  - `generateSalt(length)` — 生成随机盐值（十六进制格式）
+  - `hashPassword(password, salt)` — SHA256 哈希
+  - `verifyPassword(password, salt, storedHash)` — 验证密码
+- [x] 实现时间工具
+  - `currentTimestamp()` — 秒级时间戳
+  - `currentTimestampMs()` — 毫秒级时间戳
+  - `formatTimestamp(timestamp, format)` — 格式化时间戳
+  - `currentDateTime(format)` — 当前时间字符串
+- [x] 实现 UUID 生成
+  - `generateUUID()` — 带连字符的 UUID
+  - `generateUUIDWithoutHyphen()` — 不带连字符的 UUID
+- [x] 更新 CMakeLists.txt（添加 utils.h/cpp，修复语法错误）
+
 #### ✅ 3. 公共模块 - message.h / message.cpp（消息封装类）
 - [x] 创建 Message 类声明（message.h）
 - [x] 实现构造函数（默认构造 + 带类型构造）
@@ -31,15 +47,8 @@
 - [x] 实现 JSON 便捷方法
   - setJsonBody(): QJsonObject → QByteArray（Compact格式）
   - jsonBody(): QByteArray → QJsonObject
-- [x] 更新 CMakeLists.txt（添加 protocol.h 和 include 路径）
 
 ### 2026-07-19
-
-#### ✅ 1. 项目初始化
-- [x] 创建 Qt Widgets 项目模板
-- [x] 配置 CMakeLists.txt（Qt 6.11 + C++17）
-- [x] 初始化 Git 仓库
-- [x] 配置 .gitignore
 
 #### ✅ 2. 公共模块 - protocol.h（协议定义）
 - [x] 创建 common/ 目录结构
@@ -49,13 +58,14 @@
   - `HEADER_SIZE = 16` 字节
   - `MAX_BODY_SIZE = 10MB`
 - [x] 定义消息类型枚举 `MessageType`
-  - 用户系统：REQ/RSP_REGISTER, REQ/RSP_LOGIN, REQ/RSP_LOGOUT
-  - 好友系统：REQ/RSP_ADD_FRIEND, REQ/RSP_FRIEND_LIST, NTF_FRIEND_STATUS
-  - 聊天消息：MSG_TEXT/IMAGE/FILE, MSG_ACK, MSG_HISTORY
-  - 群聊系统：REQ/RSP_CREATE_GROUP, REQ/RSP_JOIN_GROUP, MSG_GROUP_TEXT/IMAGE/FILE
-  - 系统：HEARTBEAT
 - [x] 定义消息头结构 `MessageHeader`（16字节，#pragma pack）
 - [x] 添加 static_assert 编译时校验
+
+#### ✅ 1. 项目初始化
+- [x] 创建 Qt Widgets 项目模板
+- [x] 配置 CMakeLists.txt（Qt 6.11 + C++17）
+- [x] 初始化 Git 仓库
+- [x] 配置 .gitignore
 
 ---
 
@@ -71,27 +81,28 @@ IMSystem/
 └── common/
     ├── protocol.h              # ✅ 协议定义（已完成）
     ├── message.h               # ✅ 消息类声明（已完成）
-    └── message.cpp             # ✅ 消息类实现（已完成）
+    ├── message.cpp              # ✅ 消息类实现（已完成）
+    ├── utils.h                 # ✅ 工具函数声明（已完成）
+    └── utils.cpp               # ✅ 工具函数实现（已完成）
 ```
 
 ---
 
 ## 下一步任务
 
-### 待实现：common/utils.h + utils.cpp（工具函数）
+### 待实现：server/ 目录结构 + server.h / server.cpp（TCP服务器）
 
 **功能清单：**
-1. **密码加密**
-   - `hashPassword(const QString& password, const QString& salt)` — SHA256加密
-   - `generateSalt()` — 生成随机盐值（16字节）
-
-2. **时间工具**
-   - `currentTimestamp()` — 获取当前时间戳（秒）
-   - `currentTimestampMs()` — 获取当前时间戳（毫秒）
-   - `formatTimestamp(qint64 timestamp)` — 格式化时间戳为可读字符串
-
-3. **UUID生成**
-   - `generateUUID()` — 生成唯一消息ID
+1. **创建 server/ 目录**
+2. **实现 TcpServer 类**
+   - `startServer(port)` — 启动服务器监听
+   - `stopServer()` — 停止服务器
+   - 新客户端连接信号 `newConnection()`
+   - 客户端断开信号 `clientDisconnected()`
+3. **实现 ClientHandler 类**
+   - 处理单个客户端连接
+   - 读取数据并解析消息
+   - 发送消息给客户端
 
 ---
 
@@ -104,6 +115,8 @@ IMSystem/
 | 消息头对齐 | #pragma pack(push,1) | 避免编译器填充，保证16字节 |
 | JSON格式 | Compact格式 | 网络传输节省带宽 |
 | 反序列化校验 | 魔数 + 长度双重校验 | 保证数据完整性和协议匹配 |
+| 密码加密 | SHA256 + 随机盐值 | 安全性高，防止彩虹表攻击 |
+| 工具函数 | 命名空间 Utils | 避免全局命名污染，便于使用 |
 
 ---
 
@@ -115,41 +128,60 @@ IMSystem/
 4. **序列化/反序列化**：使用 memcpy 进行二进制数据复制
 5. **JSON处理**：QJsonDocument 进行 JSON 与 QByteArray 互转
 6. **数据校验**：魔数校验 + 长度校验，防止非法数据
+7. **密码安全**：SHA256 + 盐值，防止彩虹表攻击
+8. **UUID生成**：使用 QUuid 生成唯一标识符
 
 ---
 
 ## 关键代码片段
 
-### Message 序列化示例
+### 密码加密示例
 ```cpp
-// 发送消息
-Message msg(MessageType::MSG_TEXT);
-msg.setSequence(1);
-QJsonObject body;
-body["sender_id"] = 10001;
-body["receiver_id"] = 10002;
-body["content"] = "你好！";
-msg.setJsonBody(body);
+// 注册时：生成盐值并加密密码
+QString salt = Utils::generateSalt(16);
+QString hashedPassword = Utils::hashPassword(password, salt);
 
-// 序列化后发送
-QByteArray data = msg.serialize();
-socket->write(data);
-```
+// 存储到数据库
+db->insertUser(username, hashedPassword, salt);
 
-### Message 反序列化示例
-```cpp
-// 接收数据
-QByteArray data = socket->readAll();
-
-// 反序列化
-Message msg = Message::deserialize(data);
-
-// 使用消息
-if (msg.type() == MessageType::MSG_TEXT) {
-    QJsonObject body = msg.jsonBody();
-    QString content = body["content"].toString();
+// 登录时：验证密码
+if (Utils::verifyPassword(inputPassword, storedSalt, storedHash)) {
+    // 密码正确
 }
 ```
+
+### 时间戳使用示例
+```cpp
+// 消息发送时
+QJsonObject body;
+body["timestamp"] = Utils::currentTimestamp();
+body["content"] = "你好！";
+
+// 显示时间
+QString timeStr = Utils::formatTimestamp(timestamp);
+```
+
+### UUID 使用示例
+```cpp
+// 生成消息ID
+QString msgId = Utils::generateUUID();
+
+// 生成会话ID
+QString sessionId = Utils::generateUUIDWithoutHyphen();
+```
+
+---
+
+## 常见问题
+
+### Q: 为什么使用 SHA256 而不是 MD5？
+A: SHA256 比 MD5 更安全，MD5 已经被证明存在碰撞漏洞。在密码存储场景中，安全性是首要考虑。
+
+### Q: 盐值应该存储在哪里？
+A: 盐值应该和哈希后的密码一起存储在数据库中。每个用户应该有独立的盐值。
+
+### Q: UUID 会重复吗？
+A: UUID 设计上是全球唯一的，重复概率极低（约 2^128 分之一）。在实际应用中可以认为不会重复。
 
 ---
 

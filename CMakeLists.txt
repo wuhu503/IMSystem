@@ -13,13 +13,16 @@ qt_add_executable(IMSystem
     mainwindow.ui
     common/protocol.h
     common/message.h common/message.cpp
+    common/utils.h common/utils.cpp
 )
 
 target_link_libraries(IMSystem
     PRIVATE
         Qt::Core
         Qt::Widgets
+)
 
+# 添加 common 目录到 include 路径
 target_include_directories(IMSystem PRIVATE ${CMAKE_SOURCE_DIR}/common)
 
 install(TARGETS IMSystem
