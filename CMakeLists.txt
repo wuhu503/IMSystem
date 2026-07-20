@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+﻿cmake_minimum_required(VERSION 3.19)
 project(IMSystem LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
@@ -11,13 +11,16 @@ qt_add_executable(IMSystem
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    common/protocol.h
+    common/message.h common/message.cpp
 )
 
 target_link_libraries(IMSystem
     PRIVATE
         Qt::Core
         Qt::Widgets
-)
+
+target_include_directories(IMSystem PRIVATE ${CMAKE_SOURCE_DIR}/common)
 
 install(TARGETS IMSystem
     BUNDLE  DESTINATION .

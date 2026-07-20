@@ -1,19 +1,16 @@
-﻿// protocol.h — 协议定义
-// 定义消息类型、消息头结构、协议常量
-
-#ifndef PROTOCOL_H
+﻿#ifndef PROTOCOL_H
 #define PROTOCOL_H
 
 #include <cstdint>
 
-// ========== 协议常量 ==========
+//协议常量
 
 constexpr uint32_t PROTOCOL_MAGIC   = 0x494D5359;  // "IMSY" 的十六进制
 constexpr uint8_t  PROTOCOL_VERSION = 1;
 constexpr int      HEADER_SIZE      = 16;           // 固定消息头大小
 constexpr int      MAX_BODY_SIZE    = 10 * 1024 * 1024;  // 消息体最大 10MB
 
-// ========== 消息类型枚举 ==========
+//消息类型枚举
 
 enum class MessageType : uint16_t {
     // 用户系统 (1xxx)
@@ -55,7 +52,7 @@ enum class MessageType : uint16_t {
     HEARTBEAT           = 9001,  // 心跳包
 };
 
-// ========== 消息头结构 (16 字节) ==========
+//消息头结构(16字节)
 
 #pragma pack(push, 1)  // 按 1 字节对齐，避免编译器填充
 
