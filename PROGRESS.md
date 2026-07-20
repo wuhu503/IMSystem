@@ -16,56 +16,46 @@
 
 ### 2026-07-20
 
+#### ✅ 5. 数据库层 - DbManager（单例模式）
+- [x] 创建 server/database/ 目录结构
+- [x] 编写 init.sql 建表脚本
+  - users 表：存储用户信息（id, username, password_hash, salt, nickname, avatar, status）
+  - friendships 表：存储好友关系（user_id, friend_id, status）
+  - messages 表：存储聊天消息（msg_id, sender_id, receiver_id, type, content）
+  - 索引优化：username, user_id, timestamp 等字段
+- [x] 实现 DbManager 类（单例模式）
+  - `instance()` — 获取单例实例（线程安全）
+  - `init(dbPath)` — 初始化数据库连接
+  - `createTables()` — 执行建表脚本
+  - `insertUser()` — 插入新用户（注册）
+  - `verifyUser()` — 验证用户密码（登录）
+  - `getUserId()` — 获取用户ID
+  - `getUserInfo()` — 获取用户信息
+  - `isUsernameExists()` — 检查用户名是否存在
+  - `updateUserStatus()` — 更新用户在线状态
+- [x] 更新 CMakeLists.txt
+  - 添加 Qt::Sql 模块
+  - 分离服务端和客户端构建目标
+  - 添加 init.sql 复制命令
+
 #### ✅ 4. 公共模块 - utils.h / utils.cpp（工具函数）
-- [x] 创建 Utils 命名空间
-- [x] 实现密码加密功能
-  - `generateSalt(length)` — 生成随机盐值（十六进制格式）
-  - `hashPassword(password, salt)` — SHA256 哈希
-  - `verifyPassword(password, salt, storedHash)` — 验证密码
+- [x] 实现密码加密（SHA256 + 盐值）
 - [x] 实现时间工具
-  - `currentTimestamp()` — 秒级时间戳
-  - `currentTimestampMs()` — 毫秒级时间戳
-  - `formatTimestamp(timestamp, format)` — 格式化时间戳
-  - `currentDateTime(format)` — 当前时间字符串
 - [x] 实现 UUID 生成
-  - `generateUUID()` — 带连字符的 UUID
-  - `generateUUIDWithoutHyphen()` — 不带连字符的 UUID
-- [x] 更新 CMakeLists.txt（添加 utils.h/cpp，修复语法错误）
 
 #### ✅ 3. 公共模块 - message.h / message.cpp（消息封装类）
-- [x] 创建 Message 类声明（message.h）
-- [x] 实现构造函数（默认构造 + 带类型构造）
-- [x] 实现消息头字段操作（type, sequence）
-- [x] 实现消息体操作（setBody, body）
 - [x] 实现序列化 serialize()
-  - 打包格式：16字节消息头 + 消息体
-  - 使用 memcpy 复制二进制数据
 - [x] 实现反序列化 deserialize()
-  - 校验数据长度 >= 16字节
-  - 校验魔数 PROTOCOL_MAGIC
-  - 校验数据完整性（header + body）
 - [x] 实现 JSON 便捷方法
-  - setJsonBody(): QJsonObject → QByteArray（Compact格式）
-  - jsonBody(): QByteArray → QJsonObject
-
-### 2026-07-19
 
 #### ✅ 2. 公共模块 - protocol.h（协议定义）
-- [x] 创建 common/ 目录结构
-- [x] 定义协议常量
-  - `PROTOCOL_MAGIC = 0x494D5359`（"IMSY"）
-  - `PROTOCOL_VERSION = 1`
-  - `HEADER_SIZE = 16` 字节
-  - `MAX_BODY_SIZE = 10MB`
-- [x] 定义消息类型枚举 `MessageType`
-- [x] 定义消息头结构 `MessageHeader`（16字节，#pragma pack）
-- [x] 添加 static_assert 编译时校验
+- [x] 定义消息类型枚举 MessageType
+- [x] 定义消息头结构 MessageHeader
 
 #### ✅ 1. 项目初始化
 - [x] 创建 Qt Widgets 项目模板
-- [x] 配置 CMakeLists.txt（Qt 6.11 + C++17）
+- [x] 配置 CMakeLists.txt
 - [x] 初始化 Git 仓库
-- [x] 配置 .gitignore
 
 ---
 
@@ -73,36 +63,45 @@
 
 ```
 IMSystem/
-├── CMakeLists.txt              # 顶层构建配置
-├── .gitignore                  # Git 忽略规则
-├── PROGRESS.md                 # 开发进度报告
-├── main.cpp                    # 程序入口
-├── mainwindow.h/cpp/ui         # 主窗口（模板）
-└── common/
-    ├── protocol.h              # ✅ 协议定义（已完成）
-    ├── message.h               # ✅ 消息类声明（已完成）
-    ├── message.cpp              # ✅ 消息类实现（已完成）
-    ├── utils.h                 # ✅ 工具函数声明（已完成）
-    └── utils.cpp               # ✅ 工具函数实现（已完成）
+├── CMakeLists.txt
+├── main.cpp                        # 客户端入口
+├── mainwindow.h/cpp/ui             # 客户端主窗口
+├── PROGRESS.md
+│
+├── common/                         # ✅ 公共模块（已完成）
+│   ├── protocol.h                  # 协议定义
+│   ├── message.h/cpp               # 消息封装
+│   └── utils.h/cpp                 # 工具函数
+│
+└── server/                         # 服务端（开发中）
+    └── database/
+        ├── init.sql                # ✅ 建表脚本（已完成）
+        ├── dbmanager.h             # ✅ 数据库管理类声明（已完成）
+        └── dbmanager.cpp           # ✅ 数据库管理类实现（已完成）
 ```
 
 ---
 
 ## 下一步任务
 
-### 待实现：server/ 目录结构 + server.h / server.cpp（TCP服务器）
+### 待实现：server/clienthandler.h + clienthandler.cpp（客户端连接处理）
 
 **功能清单：**
-1. **创建 server/ 目录**
-2. **实现 TcpServer 类**
-   - `startServer(port)` — 启动服务器监听
-   - `stopServer()` — 停止服务器
-   - 新客户端连接信号 `newConnection()`
-   - 客户端断开信号 `clientDisconnected()`
-3. **实现 ClientHandler 类**
-   - 处理单个客户端连接
-   - 读取数据并解析消息
+1. **ClientHandler 类**
+   - 管理单个客户端的 socket 连接
+   - 读取数据并解析消息（处理粘包/拆包）
    - 发送消息给客户端
+   - 处理客户端断开连接
+
+2. **消息处理流程**
+   ```
+   TCP接收 → 粘包处理 → Message::deserialize() → handleMessage() → 业务处理
+   ```
+
+3. **关键实现点**
+   - 使用 QByteArray 缓冲区处理粘包
+   - 先读取 16 字节 header，再读取 body
+   - 使用信号槽通知上层模块
 
 ---
 
@@ -111,77 +110,55 @@ IMSystem/
 | 决策 | 选择 | 原因 |
 |------|------|------|
 | 消息格式 | 16字节固定头 + JSON体 | 固定头便于快速解析，JSON灵活可扩展 |
-| 枚举类型 | enum class (uint16_t) | 类型安全，底层类型固定2字节 |
-| 消息头对齐 | #pragma pack(push,1) | 避免编译器填充，保证16字节 |
-| JSON格式 | Compact格式 | 网络传输节省带宽 |
-| 反序列化校验 | 魔数 + 长度双重校验 | 保证数据完整性和协议匹配 |
-| 密码加密 | SHA256 + 随机盐值 | 安全性高，防止彩虹表攻击 |
-| 工具函数 | 命名空间 Utils | 避免全局命名污染，便于使用 |
+| 数据库 | SQLite | 轻量级，无需额外服务器，适合单机应用 |
+| 数据库访问 | 单例模式 DbManager | 全局唯一连接，避免连接泄漏 |
+| SQL防护 | 参数化查询 bindValue | 防止 SQL 注入攻击 |
+| 项目结构 | 服务端/客户端分离 | 独立部署，职责清晰 |
 
 ---
 
 ## 面试要点备忘
 
-1. **自定义协议设计**：16字节固定头 + JSON 消息体，含版本号支持升级
-2. **消息头结构**：magic校验 + version + type + bodyLength + sequence
-3. **static_assert**：编译时保证结构体大小正确
-4. **序列化/反序列化**：使用 memcpy 进行二进制数据复制
-5. **JSON处理**：QJsonDocument 进行 JSON 与 QByteArray 互转
-6. **数据校验**：魔数校验 + 长度校验，防止非法数据
-7. **密码安全**：SHA256 + 盐值，防止彩虹表攻击
-8. **UUID生成**：使用 QUuid 生成唯一标识符
+1. **单例模式**：使用 static 局部变量实现线程安全的单例
+2. **SQL 注入防护**：使用 QSqlQuery::bindValue() 参数化查询
+3. **数据库设计**：用户表、好友表、消息表，使用外键约束
+4. **索引优化**：在常用查询字段上建立索引
+5. **SQLite 特点**：嵌入式数据库，无需服务器进程，数据存储在单个文件
 
 ---
 
 ## 关键代码片段
 
-### 密码加密示例
+### DbManager 使用示例
 ```cpp
-// 注册时：生成盐值并加密密码
-QString salt = Utils::generateSalt(16);
-QString hashedPassword = Utils::hashPassword(password, salt);
+// 初始化数据库
+DbManager::instance().init("imsystem.db");
 
-// 存储到数据库
-db->insertUser(username, hashedPassword, salt);
+// 注册用户
+QString salt = Utils::generateSalt();
+QString hash = Utils::hashPassword(password, salt);
+bool success = DbManager::instance().insertUser(username, hash, salt);
 
-// 登录时：验证密码
-if (Utils::verifyPassword(inputPassword, storedSalt, storedHash)) {
-    // 密码正确
+// 登录验证
+QString hash = Utils::hashPassword(inputPassword, storedSalt);
+if (DbManager::instance().verifyUser(username, hash)) {
+    // 登录成功
+    qint64 userId = DbManager::instance().getUserId(username);
 }
-```
-
-### 时间戳使用示例
-```cpp
-// 消息发送时
-QJsonObject body;
-body["timestamp"] = Utils::currentTimestamp();
-body["content"] = "你好！";
-
-// 显示时间
-QString timeStr = Utils::formatTimestamp(timestamp);
-```
-
-### UUID 使用示例
-```cpp
-// 生成消息ID
-QString msgId = Utils::generateUUID();
-
-// 生成会话ID
-QString sessionId = Utils::generateUUIDWithoutHyphen();
 ```
 
 ---
 
 ## 常见问题
 
-### Q: 为什么使用 SHA256 而不是 MD5？
-A: SHA256 比 MD5 更安全，MD5 已经被证明存在碰撞漏洞。在密码存储场景中，安全性是首要考虑。
+### Q: 为什么使用单例模式？
+A: 数据库连接是昂贵的资源，单例保证全局只有一个连接，避免资源浪费和连接泄漏。
 
-### Q: 盐值应该存储在哪里？
-A: 盐值应该和哈希后的密码一起存储在数据库中。每个用户应该有独立的盐值。
+### Q: SQLite 支持并发吗？
+A: SQLite 支持多读者单写者模型。对于小型 IM 系统足够使用，如果需要高并发，可以考虑 MySQL。
 
-### Q: UUID 会重复吗？
-A: UUID 设计上是全球唯一的，重复概率极低（约 2^128 分之一）。在实际应用中可以认为不会重复。
+### Q: 如何防止 SQL 注入？
+A: 使用参数化查询（bindValue），不要使用字符串拼接 SQL。
 
 ---
 
