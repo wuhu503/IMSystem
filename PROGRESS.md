@@ -16,22 +16,29 @@
 
 ### 2026-07-21
 
+#### ✅ 7. TCP 服务器 - TcpServer
+- [x] 创建 server/tcpserver.h（类声明）
+- [x] 创建 server/tcpserver.cpp（类实现）
+- [x] 继承 QTcpServer，重写 incomingConnection()
+- [x] 实现启动服务器（startServer）
+- [x] 实现停止服务器（stopServer）
+- [x] 实现接受新连接
+  - 创建 QTcpSocket
+  - 创建 ClientHandler
+  - 连接断开信号
+  - 存储到 QMap 映射
+- [x] 实现客户端断开处理
+  - 从映射中移除
+  - 销毁 ClientHandler
+- [x] 实现清理所有连接（clearAllClients）
+
 #### ✅ 6. 客户端连接处理 - ClientHandler
 - [x] 创建 server/clienthandler.h（类声明）
 - [x] 创建 server/clienthandler.cpp（类实现）
-- [x] 实现构造函数（接收 socket，连接信号槽）
-- [x] 实现析构函数（断开连接）
 - [x] 实现粘包处理（onReadyRead）
-  - 使用 QByteArray 缓冲区
-  - 循环提取完整消息
-  - 处理拆包：数据不完整时等待更多数据
 - [x] 实现消息分发（handleMessage）
-  - REQ_REGISTER → 注册处理
-  - REQ_LOGIN → 登录处理
-  - MSG_TEXT → 消息转发
-  - HEARTBEAT → 心跳处理
 - [x] 实现发送消息（sendMessage）
-- [x] 实现用户ID管理（userId/setUserId）
+- [x] 实现用户ID管理
 
 ### 2026-07-20
 
@@ -39,7 +46,6 @@
 - [x] 创建 server/database/ 目录结构
 - [x] 编写 init.sql 建表脚本
 - [x] 实现 DbManager 类（单例模式）
-- [x] 实现用户 CRUD 操作
 
 #### ✅ 4. 公共模块 - utils.h / utils.cpp（工具函数）
 - [x] 实现密码加密（SHA256 + 盐值）
@@ -49,7 +55,6 @@
 #### ✅ 3. 公共模块 - message.h / message.cpp（消息封装类）
 - [x] 实现序列化 serialize()
 - [x] 实现反序列化 deserialize()
-- [x] 实现 JSON 便捷方法
 
 #### ✅ 2. 公共模块 - protocol.h（协议定义）
 - [x] 定义消息类型枚举 MessageType
@@ -77,38 +82,44 @@ IMSystem/
 │   └── utils.h/cpp                 # 工具函数
 │
 └── server/                         # 服务端（开发中）
-    ├── main.cpp                    # 服务端入口
-    ├── server.h/cpp                # TCP服务器
-    ├── tcpserver.h/cpp             # TCP服务器（备用）
+    ├── main.cpp                    # 服务端入口（待实现）
+    ├── tcpserver.h/cpp             # ✅ TCP服务器（已完成）
     ├── clienthandler.h/cpp         # ✅ 客户端连接处理（已完成）
     ├── database/
     │   ├── init.sql                # 建表脚本
     │   └── dbmanager.h/cpp         # 数据库管理
     └── service/
-        ├── authservice.h/cpp       # 认证服务
-        └── ...
+        └── authservice.h/cpp       # 认证服务（待实现）
 ```
+
+**注意**：`server.h` 和 `server.cpp` 是空文件，可以手动删除。
 
 ---
 
 ## 下一步任务
 
-### 待实现：server/server.h + server.cpp（TCP服务器）
+### 待实现：server/service/authservice.h + authservice.cpp（认证服务）
 
 **功能清单：**
-1. **TcpServer 类**（继承 QTcpServer）
-   - `startServer(port)` — 启动服务器监听
-   - `stopServer()` — 停止服务器
-   - `incomingConnection()` — 重写虚函数，接受新连接
-   - 管理所有 ClientHandler 实例
+1. **AuthService 类**（单例模式）
+   - `handleRegister(client, msg)` — 处理注册请求
+   - `handleLogin(client, msg)` — 处理登录请求
 
-2. **连接管理**
-   - 使用 QMap 存储所有活跃连接
-   - 处理客户端断开（清理资源）
+2. **注册流程**
+   ```
+   解析请求 → 检查用户名 → 生成盐值 → 加密密码 → 存入数据库 → 返回响应
+   ```
 
-3. **消息转发**
-   - 根据消息类型分发给 AuthService
-   - 转发聊天消息给目标用户
+3. **登录流程**
+   ```
+   解析请求 → 查询用户 → 验证密码 → 生成Token → 返回响应
+   ```
+
+4. **消息格式**
+   - 注册请求：`{username, password}`
+   - 注册响应：`{success, message, user_id}`
+   - 登录请求：`{username, password}`
+   - 登录响应：`{success, token, user_id}`
 
 ---
 
@@ -121,58 +132,65 @@ IMSystem/
 | 数据库访问 | 单例模式 DbManager | 全局唯一连接 |
 | 粘包处理 | 缓冲区 + 长度前缀 | 可靠的消息边界划分 |
 | 连接管理 | ClientHandler per connection | 职责清晰，易于扩展 |
+| 服务器设计 | 继承 QTcpServer | 利用 Qt 框架，减少代码量 |
 
 ---
 
 ## 面试要点备忘
 
-1. **粘包/拆包**：TCP 是流式协议，需要应用层协议划分消息边界
-2. **解决方案**：使用长度前缀协议（header 包含 bodyLength）
-3. **缓冲区设计**：QByteArray 累积数据，循环提取完整消息
-4. **信号槽机制**：readyRead 信号触发数据读取
-5. **资源管理**：socket 由 Server 创建，Handler 负责使用
+1. **TcpServer 设计**：继承 QTcpServer，重写 incomingConnection()
+2. **连接管理**：使用 QMap 存储所有活跃连接
+3. **资源清理**：客户端断开时销毁 ClientHandler，使用 deleteLater()
+4. **信号槽**：新连接和断开事件的处理
+5. **incomingConnection()**：QTcpServer 的虚函数，有新连接时自动调用
 
 ---
 
 ## 关键代码片段
 
-### ClientHandler 使用示例
+### TcpServer 使用示例
 ```cpp
-// TcpServer 中创建 ClientHandler
-void TcpServer::incomingConnection(qintptr socketDescriptor)
-{
-    QTcpSocket *socket = new QTcpSocket(this);
-    socket->setSocketDescriptor(socketDescriptor);
-    
-    ClientHandler *handler = new ClientHandler(socket, this);
-    
-    // 连接断开信号
-    connect(handler, &ClientHandler::clientDisconnect, 
-            this, &TcpServer::onClientDisconnected);
-    
-    // 存储到映射
-    m_clients.insert(socketDescriptor, handler);
+// 创建并启动服务器
+TcpServer *server = new TcpServer(this);
+
+// 连接信号
+connect(server, &TcpServer::newClientConnected, 
+        [](qintptr desc) {
+    qInfo() << "新客户端:" << desc;
+});
+
+// 启动服务器
+if (server->startServer(8080)) {
+    qInfo() << "服务器启动成功";
 }
 ```
 
-### 消息处理流程
+### 连接管理流程
 ```
-TCP接收 → onReadyRead() → 缓冲区累积 → 提取完整消息 
-    → deserialize() → handleMessage() → 业务处理
+新连接 → incomingConnection() 
+    → 创建 ClientHandler 
+    → 存储到 m_clients 
+    → 发送 newClientConnected 信号
+
+客户端断开 → ClientHandler::onDisconnected() 
+    → 发送 clientDisconnect 信号 
+    → TcpServer::onClientDisconnected() 
+    → 从 m_clients 移除 
+    → 销毁 ClientHandler
 ```
 
 ---
 
 ## 常见问题
 
-### Q: 为什么需要处理粘包？
-A: TCP 是流式协议，不保证消息边界。可能一次收到多个消息，或一个消息分多次收到。
+### Q: 为什么继承 QTcpServer 而不是组合？
+A: 继承可以重写 virtual 函数（如 incomingConnection），更符合 Qt 的设计模式。
 
-### Q: 如何判断消息是否完整？
-A: 先读取 16 字节 header，获取 bodyLength，再检查缓冲区是否有足够的 body 数据。
+### Q: 为什么使用 deleteLater() 而不是 delete？
+A: deleteLater() 会在事件循环中安全删除，避免在信号槽处理过程中删除对象导致崩溃。
 
-### Q: ClientHandler 何时销毁？
-A: 当客户端断开连接时，由 TcpServer 负责销毁对应的 ClientHandler。
+### Q: QMap 和 QHash 的区别？
+A: QMap 按 key 排序，查找 O(log n)；QHash 无序，查找 O(1)。这里用 QMap 即可。
 
 ---
 
