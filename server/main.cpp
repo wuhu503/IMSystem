@@ -1,17 +1,4 @@
-﻿/**
- * main.cpp — 服务端程序入口
- * 
- * 功能：
- * 1. 初始化数据库
- * 2. 创建并启动 TCP 服务器
- * 3. 进入事件循环
- * 
- * 使用方法：
- * ./IMServer [port]
- * 默认端口：8080
- */
-
-#include <QCoreApplication>
+﻿#include <QCoreApplication>
 #include <QDebug>
 #include "dbmanager.h"
 #include "tcpserver.h"

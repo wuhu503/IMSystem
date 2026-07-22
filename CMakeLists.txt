@@ -5,6 +5,25 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Sql)
 
 qt_standard_project_setup()
 
+# ========== 公共模块（静态库） ==========
+add_library(common STATIC
+    common/protocol.h
+    common/message.h
+    common/message.cpp
+    common/utils.h
+    common/utils.cpp
+)
+
+target_link_libraries(common
+    PUBLIC
+        Qt::Core
+)
+
+target_include_directories(common
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/common
+)
+
 # ========== 服务端可执行文件 ==========
 qt_add_executable(IMServer
     server/main.cpp
@@ -20,13 +39,13 @@ qt_add_executable(IMServer
 
 target_link_libraries(IMServer
     PRIVATE
+        common
         Qt::Core
         Qt::Network
         Qt::Sql
 )
 
 target_include_directories(IMServer PRIVATE 
-    ${CMAKE_SOURCE_DIR}/common
     ${CMAKE_SOURCE_DIR}/server
     ${CMAKE_SOURCE_DIR}/server/database
     ${CMAKE_SOURCE_DIR}/server/service
@@ -47,22 +66,14 @@ qt_add_executable(IMClient
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
-    common/protocol.h
-    common/message.h
-    common/message.cpp
-    common/utils.h
-    common/utils.cpp
 )
 
 target_link_libraries(IMClient
     PRIVATE
+        common
         Qt::Core
         Qt::Widgets
         Qt::Network
-)
-
-target_include_directories(IMClient PRIVATE 
-    ${CMAKE_SOURCE_DIR}/common
 )
 
 install(TARGETS IMClient IMServer
