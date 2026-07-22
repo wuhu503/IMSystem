@@ -8,8 +8,14 @@ qt_standard_project_setup()
 # ========== 服务端可执行文件 ==========
 qt_add_executable(IMServer
     server/main.cpp
+    server/tcpserver.h
+    server/tcpserver.cpp
+    server/clienthandler.h
+    server/clienthandler.cpp
     server/database/dbmanager.h
     server/database/dbmanager.cpp
+    server/service/authservice.h
+    server/service/authservice.cpp
 )
 
 target_link_libraries(IMServer
@@ -22,6 +28,8 @@ target_link_libraries(IMServer
 target_include_directories(IMServer PRIVATE 
     ${CMAKE_SOURCE_DIR}/common
     ${CMAKE_SOURCE_DIR}/server
+    ${CMAKE_SOURCE_DIR}/server/database
+    ${CMAKE_SOURCE_DIR}/server/service
 )
 
 # 复制 init.sql 到构建目录

@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QTcpSocket>
+#include "dbmanager.h"
 #include "message.h"
 
 class ClientHandler : public QObject

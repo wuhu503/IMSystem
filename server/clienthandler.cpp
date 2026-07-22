@@ -1,4 +1,5 @@
 ﻿#include "clienthandler.h"
+#include "authservice.h"
 #include <cstring>
 
 ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
@@ -6,11 +7,15 @@ ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
     , m_socket(socket)
     , m_userId(-1)
 {
+    // 连接信号槽
+    // readyRead：有数据可读时触发
+    // disconnected：客户端断开时触发
     connect(m_socket, &QTcpSocket::readyRead, this, &ClientHandler::onReadyRead);
     connect(m_socket, &QTcpSocket::disconnected, this, &ClientHandler::onDisconnected);
     
     qInfo() << "新客户端连接:" << m_socket->peerAddress().toString();
 }
+
 
 ClientHandler::~ClientHandler()
 {
@@ -84,9 +89,14 @@ void ClientHandler::onReadyRead()
     }
 }
 
-
 void ClientHandler::onDisconnected()
 {
+    // 如果用户已登录，更新离线状态
+    if (m_userId != -1) {
+        DbManager::instance().updateUserStatus(m_userId, 0);
+        qInfo() << "用户离线, userId:" << m_userId;
+    }
+    
     qInfo() << "客户端断开连接, userId:" << m_userId 
             << ", address:" << m_socket->peerAddress().toString();
     
@@ -106,24 +116,24 @@ void ClientHandler::handleMessage(const Message &msg)
     case MessageType::REQ_REGISTER:
         // 注册请求 → 调用 AuthService 处理
         qInfo() << "收到注册请求";
-        // TODO: AuthService::instance().handleRegister(this, msg);
+        AuthService::instance().handleRegister(this, msg);
         break;
         
     case MessageType::REQ_LOGIN:
         // 登录请求 → 调用 AuthService 处理
         qInfo() << "收到登录请求";
-        // TODO: AuthService::instance().handleLogin(this, msg);
+        AuthService::instance().handleLogin(this, msg);
         break;
         
     case MessageType::MSG_TEXT:
         // 文本消息 → 转发给目标用户
         qInfo() << "收到文本消息";
-        // TODO: 转发消息
+        // TODO: 转发消息（后续实现）
         break;
         
     case MessageType::HEARTBEAT:
         // 心跳包 → 更新最后活跃时间
-        // TODO: 更新心跳时间
+        // TODO: 更新心跳时间（后续实现）
         break;
         
     case MessageType::MSG_ACK:

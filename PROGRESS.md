@@ -2,7 +2,7 @@
 
 > 项目：Qt6 即时通讯系统
 > 技术栈：Qt 6.11 + C++17 + SQLite + CMake
-> 更新时间：2026-07-21
+> 更新时间：2026-07-22
 
 ---
 
@@ -14,23 +14,39 @@
 
 ## 已完成任务
 
+### 2026-07-22
+
+#### ✅ 8. 认证服务 - AuthService
+- [x] 创建 server/service/authservice.h（类声明）
+- [x] 创建 server/service/authservice.cpp（类实现）
+- [x] 实现单例模式（instance()）
+- [x] 实现注册处理（handleRegister）
+  - 解析请求 JSON
+  - 验证参数（用户名、密码长度）
+  - 检查用户名是否已存在
+  - 生成盐值和密码哈希（SHA256）
+  - 存入数据库
+  - 返回成功响应
+- [x] 实现登录处理（handleLogin）
+  - 解析请求 JSON
+  - 检查用户是否存在
+  - 验证密码
+  - 生成 Token（UUID）
+  - 设置用户ID
+  - 更新在线状态
+  - 返回成功响应
+- [x] 实现辅助方法（createResponse、sendErrorResponse）
+- [x] 更新 CMakeLists.txt（添加 authservice 和 tcpserver 等文件）
+
 ### 2026-07-21
 
 #### ✅ 7. TCP 服务器 - TcpServer
 - [x] 创建 server/tcpserver.h（类声明）
 - [x] 创建 server/tcpserver.cpp（类实现）
 - [x] 继承 QTcpServer，重写 incomingConnection()
-- [x] 实现启动服务器（startServer）
-- [x] 实现停止服务器（stopServer）
+- [x] 实现启动/停止服务器
 - [x] 实现接受新连接
-  - 创建 QTcpSocket
-  - 创建 ClientHandler
-  - 连接断开信号
-  - 存储到 QMap 映射
 - [x] 实现客户端断开处理
-  - 从映射中移除
-  - 销毁 ClientHandler
-- [x] 实现清理所有连接（clearAllClients）
 
 #### ✅ 6. 客户端连接处理 - ClientHandler
 - [x] 创建 server/clienthandler.h（类声明）
@@ -38,7 +54,6 @@
 - [x] 实现粘包处理（onReadyRead）
 - [x] 实现消息分发（handleMessage）
 - [x] 实现发送消息（sendMessage）
-- [x] 实现用户ID管理
 
 ### 2026-07-20
 
@@ -81,45 +96,56 @@ IMSystem/
 │   ├── message.h/cpp               # 消息封装
 │   └── utils.h/cpp                 # 工具函数
 │
-└── server/                         # 服务端（开发中）
+└── server/                         # ✅ 服务端（基本完成）
     ├── main.cpp                    # 服务端入口（待实现）
     ├── tcpserver.h/cpp             # ✅ TCP服务器（已完成）
     ├── clienthandler.h/cpp         # ✅ 客户端连接处理（已完成）
     ├── database/
     │   ├── init.sql                # 建表脚本
-    │   └── dbmanager.h/cpp         # 数据库管理
+    │   └── dbmanager.h/cpp         # ✅ 数据库管理（已完成）
     └── service/
-        └── authservice.h/cpp       # 认证服务（待实现）
+        └── authservice.h/cpp       # ✅ 认证服务（已完成）
 ```
-
-**注意**：`server.h` 和 `server.cpp` 是空文件，可以手动删除。
 
 ---
 
 ## 下一步任务
 
-### 待实现：server/service/authservice.h + authservice.cpp（认证服务）
+### 待实现：server/main.cpp（服务端入口）
 
 **功能清单：**
-1. **AuthService 类**（单例模式）
-   - `handleRegister(client, msg)` — 处理注册请求
-   - `handleLogin(client, msg)` — 处理登录请求
+1. **初始化数据库**
+   - 调用 DbManager::instance().init()
+   
+2. **创建并启动服务器**
+   - 创建 TcpServer 实例
+   - 连接信号槽（新连接、断开）
+   - 调用 startServer(port)
+   
+3. **事件循环**
+   - 创建 QApplication
+   - 进入事件循环
 
-2. **注册流程**
-   ```
-   解析请求 → 检查用户名 → 生成盐值 → 加密密码 → 存入数据库 → 返回响应
-   ```
-
-3. **登录流程**
-   ```
-   解析请求 → 查询用户 → 验证密码 → 生成Token → 返回响应
-   ```
-
-4. **消息格式**
-   - 注册请求：`{username, password}`
-   - 注册响应：`{success, message, user_id}`
-   - 登录请求：`{username, password}`
-   - 登录响应：`{success, token, user_id}`
+**代码框架：**
+```cpp
+int main(int argc, char *argv[])
+{
+    QCoreApplication app(argc, argv);
+    
+    // 初始化数据库
+    DbManager::instance().init("imsystem.db");
+    
+    // 创建并启动服务器
+    TcpServer server;
+    if (!server.startServer(8080)) {
+        return -1;
+    }
+    
+    qInfo() << "服务器已启动";
+    
+    return app.exec();
+}
+```
 
 ---
 
@@ -133,64 +159,88 @@ IMSystem/
 | 粘包处理 | 缓冲区 + 长度前缀 | 可靠的消息边界划分 |
 | 连接管理 | ClientHandler per connection | 职责清晰，易于扩展 |
 | 服务器设计 | 继承 QTcpServer | 利用 Qt 框架，减少代码量 |
+| 密码加密 | SHA256 + 随机盐值 | 安全性高，防止彩虹表攻击 |
+| Token 生成 | UUID | 全局唯一，足够随机 |
 
 ---
 
 ## 面试要点备忘
 
-1. **TcpServer 设计**：继承 QTcpServer，重写 incomingConnection()
-2. **连接管理**：使用 QMap 存储所有活跃连接
-3. **资源清理**：客户端断开时销毁 ClientHandler，使用 deleteLater()
-4. **信号槽**：新连接和断开事件的处理
-5. **incomingConnection()**：QTcpServer 的虚函数，有新连接时自动调用
+1. **注册流程**：参数验证 → 用户名检查 → 盐值生成 → 密码加密 → 数据库存储
+2. **登录流程**：用户查询 → 密码验证 → Token 生成 → 在线状态更新
+3. **密码安全**：SHA256 + 随机盐值，数据库不存明文密码
+4. **单例模式**：使用 static 局部变量实现线程安全
+5. **错误处理**：统一的错误响应格式
 
 ---
 
 ## 关键代码片段
 
-### TcpServer 使用示例
+### AuthService 使用示例
 ```cpp
-// 创建并启动服务器
-TcpServer *server = new TcpServer(this);
+// 在 ClientHandler::handleMessage() 中调用
+case MessageType::REQ_REGISTER:
+    AuthService::instance().handleRegister(this, msg);
+    break;
 
-// 连接信号
-connect(server, &TcpServer::newClientConnected, 
-        [](qintptr desc) {
-    qInfo() << "新客户端:" << desc;
-});
+case MessageType::REQ_LOGIN:
+    AuthService::instance().handleLogin(this, msg);
+    break;
+```
 
-// 启动服务器
-if (server->startServer(8080)) {
-    qInfo() << "服务器启动成功";
+### 注册请求/响应格式
+```json
+// 请求
+{
+    "type": 1000,
+    "username": "zhangsan",
+    "password": "123456",
+    "sequence": 1
+}
+
+// 响应
+{
+    "type": 1001,
+    "success": true,
+    "user_id": 10001,
+    "message": "注册成功",
+    "sequence": 1
 }
 ```
 
-### 连接管理流程
-```
-新连接 → incomingConnection() 
-    → 创建 ClientHandler 
-    → 存储到 m_clients 
-    → 发送 newClientConnected 信号
+### 登录请求/响应格式
+```json
+// 请求
+{
+    "type": 1002,
+    "username": "zhangsan",
+    "password": "123456",
+    "sequence": 2
+}
 
-客户端断开 → ClientHandler::onDisconnected() 
-    → 发送 clientDisconnect 信号 
-    → TcpServer::onClientDisconnected() 
-    → 从 m_clients 移除 
-    → 销毁 ClientHandler
+// 响应
+{
+    "type": 1003,
+    "success": true,
+    "token": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": 10001,
+    "message": "登录成功",
+    "sequence": 2
+}
 ```
 
 ---
 
 ## 常见问题
 
-### Q: 为什么继承 QTcpServer 而不是组合？
-A: 继承可以重写 virtual 函数（如 incomingConnection），更符合 Qt 的设计模式。
+### Q: 为什么登录失败不明确提示"用户名不存在"或"密码错误"？
+A: 安全考虑。如果明确提示，攻击者可以枚举有效的用户名。统一提示"用户名或密码错误"更安全。
 
-### Q: 为什么使用 deleteLater() 而不是 delete？
-A: deleteLater() 会在事件循环中安全删除，避免在信号槽处理过程中删除对象导致崩溃。
+### Q: Token 应该存储在哪里？
+A: 当前实现使用内存存储（ClientHandler 的 userId）。生产环境应该使用 Redis 或数据库存储 Token，并设置过期时间。
 
-### Q: QMap 和 QHash 的区别？
-A: QMap 按 key 排序，查找 O(log n)；QHash 无序，查找 O(1)。这里用 QMap 即可。
+### Q: 如何防止暴力破解？
+A: 可以添加登录失败次数限制，例如连续失败5次后锁定账号15分钟。
 
 ---
 
