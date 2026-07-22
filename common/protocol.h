@@ -6,7 +6,7 @@
 //协议常量
 
 constexpr uint32_t PROTOCOL_MAGIC   = 0x494D5359;  // "IMSY" 的十六进制
-constexpr uint8_t  PROTOCOL_VERSION = 1;
+constexpr uint8_t  PROTOCOL_VERSION = 1;            //版本号
 constexpr int      HEADER_SIZE      = 16;           // 固定消息头大小
 constexpr int      MAX_BODY_SIZE    = 10 * 1024 * 1024;  // 消息体最大 10MB
 

@@ -8,12 +8,13 @@ Message::Message()
     m_header.version = PROTOCOL_VERSION;
 }
 
+
 Message::Message(MessageType type) : Message()
 {
     m_header.type = static_cast<uint16_t>(type);
 }
 
-//消息头字段操作
+//消息头字段操作：
 void Message::setType(MessageType type)
 {
     m_header.type = static_cast<uint16_t>(type);
@@ -54,13 +55,13 @@ QByteArray Message::serialize() const
     int totalSize = HEADER_SIZE + m_body.size();
     QByteArray data(totalSize, '\0');
 
-    std::memcpy(data.data(), &m_header, HEADER_SIZE);
+    std::memcpy(data.data(), &m_header, HEADER_SIZE);   //先把消息头传入
+
     if (!m_body.isEmpty()) {
-        std::memcpy(data.data() + HEADER_SIZE, 
+        std::memcpy(data.data() + HEADER_SIZE,     //跳过已经存储的消息头
                     m_body.constData(), 
                     m_body.size());
     }
-    
     return data;
 }
 
