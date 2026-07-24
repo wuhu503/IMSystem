@@ -66,6 +66,7 @@ qt_add_executable(IMClient
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    client/tcpclient.h client/tcpclient.cpp
 )
 
 target_link_libraries(IMClient
