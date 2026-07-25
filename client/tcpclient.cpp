@@ -17,6 +17,11 @@ TcpClient& TcpClient::instance()
     return instance;
 }
 
+TcpClient::~TcpClient()
+{
+
+}
+
 void TcpClient::connectToServer(const QString& host,quint16 port)
 {
     if(m_socket->state()!= QAbstractSocket::UnconnectedState)

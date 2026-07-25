@@ -1,6 +1,11 @@
 ﻿cmake_minimum_required(VERSION 3.19)
 project(IMSystem LANGUAGES CXX)
 
+# 启用自动处理 UI 文件
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Sql)
 
 qt_standard_project_setup()
@@ -66,7 +71,14 @@ qt_add_executable(IMClient
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
-    client/tcpclient.h client/tcpclient.cpp
+    client/tcpclient.h
+    client/tcpclient.cpp
+    client/ui/logindialog.h
+    client/ui/logindialog.cpp
+    client/ui/logindialog.ui
+    client/ui/registerdialog.h
+    client/ui/registerdialog.cpp
+    client/ui/registerdialog.ui
 )
 
 target_link_libraries(IMClient
@@ -75,6 +87,13 @@ target_link_libraries(IMClient
         Qt::Core
         Qt::Widgets
         Qt::Network
+)
+
+# include 路径配置
+target_include_directories(IMClient PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/IMClient_autogen/include
+    ${CMAKE_SOURCE_DIR}/client
+    ${CMAKE_SOURCE_DIR}/client/ui
 )
 
 install(TARGETS IMClient IMServer
