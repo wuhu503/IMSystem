@@ -1,19 +1,9 @@
-﻿/**
- * dbmanager.cpp — 数据库管理类实现
- * 
- * 本文件实现了 SQLite 数据库的连接、初始化和 CRUD 操作
- * 
- * 关键技术点：
- * 1. 单例模式：使用 static 局部变量实现
- * 2. 参数化查询：使用 bindValue() 防止 SQL 注入
- * 3. 事务处理：保证数据一致性
- */
-
-#include "dbmanager.h"
+﻿#include "dbmanager.h"
 #include <QFile>
 #include <QDir>
 #include <QStandardPaths>
 #include <QDateTime>
+#include <QRegularExpression>
 
 // ========== 单例实现 ==========
 
@@ -106,10 +96,29 @@ bool DbManager::createTables()
     QString sql = QString::fromUtf8(sqlFile.readAll());
     sqlFile.close();
     
+    // 移除SQL注释
+    QRegularExpression commentRegex("--[^\n]*");
+    sql.replace(commentRegex, "");
+    
+    // 按分号拆分，逐条执行
+    QStringList statements = sql.split(';', Qt::SkipEmptyParts);
+    qInfo() << "SQL脚本拆分后语句数:" << statements.size();
+    
     QSqlQuery query;
-    if (!query.exec(sql)) {
-        qCritical() << "执行建表脚本失败:" << query.lastError().text();
-        return false;
+    for (const QString &stmt : statements) {
+        QString trimmed = stmt.simplified();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+        if (!query.exec(trimmed)) {
+            // 忽略 "already exists" 类的错误
+            QString errText = query.lastError().text();
+            if (!errText.contains("already exists", Qt::CaseInsensitive)) {
+                qCritical() << "执行建表脚本失败:" << errText;
+                qCritical() << "SQL:" << trimmed;
+                return false;
+            }
+        }
     }
     
     qInfo() << "数据库表创建成功";
@@ -175,11 +184,7 @@ qint64 DbManager::getUserId(const QString &username)
     return query.value("id").toLongLong();
 }
 
-/**
- * 获取用户信息（完整版本，包含密码相关字段）
- * 
- * 修复：添加 password_hash 和 salt 字段，供登录验证使用
- */
+
 QVariantMap DbManager::getUserInfo(qint64 userId)
 {
     QVariantMap info;
