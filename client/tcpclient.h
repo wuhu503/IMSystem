@@ -1,4 +1,4 @@
-#ifndef TCPCLIENT_H
+﻿#ifndef TCPCLIENT_H
 #define TCPCLIENT_H
 
 #include <QObject>
@@ -19,6 +19,9 @@ public:
 
     bool isConnect() const;
 
+    QString host() const;
+    quint16 port() const;
+
 signals:
     void messageReceived(const Message &msg);
     void connectionEstablished();
@@ -36,6 +39,8 @@ private:
     ~TcpClient();
     QTcpSocket *m_socket;
     QByteArray m_buffer;
+    QString m_host;
+    quint16 m_port;
 };
 
 #endif // TCPCLIENT_H

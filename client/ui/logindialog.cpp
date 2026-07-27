@@ -27,13 +27,27 @@ void LoginDialog::on_loginBtn_clicked()
 {
     QString username = ui->usernameEdit->text();
     QString password = ui->passwordEdit->text();
-    
+    QString server = ui->serverEdit->text().trimmed();
+    QString portStr = ui->portEdit->text().trimmed();
+
+    if (server.isEmpty() || portStr.isEmpty()) {
+        QMessageBox::warning(this, "提示", "服务器地址和端口不能为空");
+        return;
+    }
+
+    bool ok;
+    quint16 port = portStr.toUShort(&ok);
+    if (!ok || port == 0) {
+        QMessageBox::warning(this, "提示", "端口号无效，请输入1-65535之间的数字");
+        return;
+    }
+
     if (username.isEmpty() || password.isEmpty()) {
         QMessageBox::warning(this, "提示", "用户名和密码不能为空");
         return;
     }
-    
-    TcpClient::instance().connectToServer("127.0.0.1", 8080);
+
+    TcpClient::instance().connectToServer(server, port);
 }
 
 // 注册按钮点击 - 跳转到注册界面
@@ -70,12 +84,12 @@ void LoginDialog::sendLoginRequest(const QString &username, const QString &passw
 {
     Message msg(MessageType::REQ_LOGIN);
     msg.setSequence(1);
-    
+
     QJsonObject body;
     body["username"] = username;
     body["password"] = password;
     msg.setJsonBody(body);
-    
+
     TcpClient::instance().sendMessage(msg);
 }
 
@@ -84,7 +98,7 @@ void LoginDialog::handleLoginResponse(const QJsonObject &body)
 {
     bool success = body["success"].toBool();
     QString message = body["message"].toString();
-    
+
     if (success) {
         QMessageBox::information(this, "成功", "登录成功!");
         accept();  // 关闭对话框，返回 QDialog::Accepted

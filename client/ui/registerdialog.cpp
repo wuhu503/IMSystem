@@ -8,7 +8,7 @@ RegisterDialog::RegisterDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowTitle("用户注册");
-    
+
     connect(&TcpClient::instance(), &TcpClient::connectionEstablished,
             this, &RegisterDialog::onConnectionEstablished);
     connect(&TcpClient::instance(), &TcpClient::messageReceived,
@@ -28,28 +28,30 @@ void RegisterDialog::on_registerBtn_clicked()
     QString username = ui->usernameEdit->text();
     QString password = ui->passwordEdit->text();
     QString confirmPassword = ui->confirmPasswordEdit->text();
-    
+
     if (username.isEmpty() || password.isEmpty()) {
         QMessageBox::warning(this, "提示", "用户名和密码不能为空");
         return;
     }
-    
+
     if (username.length() < 3 || username.length() > 20) {
         QMessageBox::warning(this, "提示", "用户名长度必须在3-20之间");
         return;
     }
-    
+
     if (password.length() < 6) {
         QMessageBox::warning(this, "提示", "密码长度不能少于6位");
         return;
     }
-    
+
     if (password != confirmPassword) {
         QMessageBox::warning(this, "提示", "两次输入的密码不一致");
         return;
     }
-    
-    TcpClient::instance().connectToServer("127.0.0.1", 8080);
+
+    // 复用登录时设置的服务器地址和端口
+    TcpClient::instance().connectToServer(TcpClient::instance().host(),
+                                          TcpClient::instance().port());
 }
 
 // 返回按钮
@@ -85,12 +87,12 @@ void RegisterDialog::sendRegisterRequest(const QString &username, const QString 
 {
     Message msg(MessageType::REQ_REGISTER);
     msg.setSequence(2);
-    
+
     QJsonObject body;
     body["username"] = username;
     body["password"] = password;
     msg.setJsonBody(body);
-    
+
     TcpClient::instance().sendMessage(msg);
 }
 
@@ -99,7 +101,7 @@ void RegisterDialog::handleRegisterResponse(const QJsonObject &body)
 {
     bool success = body["success"].toBool();
     QString message = body["message"].toString();
-    
+
     if (success) {
         QMessageBox::information(this, "成功", "注册成功! 请返回登录");
         ui->usernameEdit->clear();
