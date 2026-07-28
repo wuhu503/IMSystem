@@ -1,7 +1,8 @@
-#ifndef MAINWINDOW_H
+﻿#ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QListWidgetItem>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -17,7 +18,21 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+private slots:
+    void onFriendClicked(QListWidgetItem *item);
+    void onSendClicked();
+    void onSearchTextChanged(const QString &text);
+    void on_actionExit_triggered();
+    void on_actionAbout_triggered();
+
 private:
+    void initFriendList();
+    void addTestFriends();
+    void appendMessage(const QString &nickname, const QString &message, bool isSelf);
+    QString createBubbleHtml(const QString &message, bool isSelf, const QString &time);
+
     Ui::MainWindow *ui;
+    QString currentChatFriend;  // 当前聊天的好友昵称
 };
+
 #endif // MAINWINDOW_H
