@@ -18,9 +18,15 @@ public:
     void sendMessage(const Message &msg);
 
     bool isConnect() const;
+    bool isConnecting() const;  // 是否正在连接中
 
     QString host() const;
     quint16 port() const;
+    
+    // Token 相关
+    void setToken(const QString &token);
+    QString token() const;
+    void clearToken();
 
 signals:
     void messageReceived(const Message &msg);
@@ -41,6 +47,8 @@ private:
     QByteArray m_buffer;
     QString m_host;
     quint16 m_port;
+    QString m_token;      // 登录成功后的token
+    bool m_connecting;    // 是否正在连接中
 };
 
 #endif // TCPCLIENT_H

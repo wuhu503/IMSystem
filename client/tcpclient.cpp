@@ -5,6 +5,7 @@ TcpClient::TcpClient(QObject *parent)
     ,m_socket(new QTcpSocket(this))
     ,m_host("127.0.0.1")
     ,m_port(8080)
+    ,m_connecting(false)
 {
     connect(m_socket,&QTcpSocket::readyRead,this,&TcpClient::onReadyRead);
     connect(m_socket,&QTcpSocket::connected,this,&TcpClient::onConnected);
@@ -25,8 +26,15 @@ TcpClient::~TcpClient()
 
 void TcpClient::connectToServer(const QString& host,quint16 port)
 {
+    // 如果正在连接中，忽略此次请求
+    if (m_connecting) {
+        qInfo() << "正在连接中，请稍候...";
+        return;
+    }
+    
     m_host = host;
     m_port = port;
+    m_connecting = true;
 
     if(m_socket->state()!= QAbstractSocket::UnconnectedState)
     {
@@ -62,6 +70,11 @@ bool TcpClient::isConnect() const
     return m_socket->state()==QAbstractSocket::ConnectedState;
 }
 
+bool TcpClient::isConnecting() const
+{
+    return m_connecting;
+}
+
 QString TcpClient::host() const
 {
     return m_host;
@@ -70,6 +83,21 @@ QString TcpClient::host() const
 quint16 TcpClient::port() const
 {
     return m_port;
+}
+
+void TcpClient::setToken(const QString &token)
+{
+    m_token = token;
+}
+
+QString TcpClient::token() const
+{
+    return m_token;
+}
+
+void TcpClient::clearToken()
+{
+    m_token.clear();
 }
 
 void TcpClient::onReadyRead()
@@ -95,17 +123,20 @@ void TcpClient::onReadyRead()
 
 void TcpClient::onConnected()
 {
+    m_connecting = false;  // 连接成功，重置连接状态
     emit connectionEstablished();
 }
 
 void TcpClient::onDisconnected()
 {
+    m_connecting = false;  // 断开连接，重置连接状态
     emit connectionClosed();
 }
 
 void TcpClient::onErrorOccurred(QAbstractSocket::SocketError error)
 {
     Q_UNUSED(error);
+    m_connecting = false;  // 连接失败，重置连接状态
     qDebug() << "连接出错：" << m_socket->errorString();
     emit errorOccurred(m_socket->errorString());
 }

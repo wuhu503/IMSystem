@@ -17,6 +17,8 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+    
+    void setUsername(const QString &username);  // 设置当前登录用户
 
 private slots:
     void onFriendClicked(QListWidgetItem *item);
@@ -33,6 +35,7 @@ private:
 
     Ui::MainWindow *ui;
     QString currentChatFriend;  // 当前聊天的好友昵称
+    QString m_username;         // 当前登录用户
 };
 
 #endif // MAINWINDOW_H

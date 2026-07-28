@@ -34,6 +34,14 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+// 设置当前登录用户
+void MainWindow::setUsername(const QString &username)
+{
+    m_username = username;
+    ui->userAccountLabel->setText(QString::fromUtf8("当前用户：%1").arg(username));
+    setWindowTitle(QString::fromUtf8("IMSystem - %1").arg(username));
+}
+
 // 初始化好友列表
 void MainWindow::initFriendList()
 {
@@ -44,7 +52,6 @@ void MainWindow::initFriendList()
 // 添加测试好友数据
 void MainWindow::addTestFriends()
 {
-    // 测试数据 - 后续从服务端获取
     QStringList friends = {
         QString::fromUtf8("张三|在线|今天天气不错啊"),
         QString::fromUtf8("李四|离线|明天见"),
@@ -74,7 +81,6 @@ void MainWindow::addTestFriends()
             item->setText(displayText);
             item->setSizeHint(QSize(0, 60));
             
-            // 设置图标（默认头像）
             QPixmap avatar(40, 40);
             avatar.fill(QColor(100, 149, 237));
             QPainter painter(&avatar);
@@ -115,11 +121,10 @@ void MainWindow::onSendClicked()
         return;
     }
     
-    appendMessage(QString::fromUtf8("我"), message, true);
+    appendMessage(m_username, message, true);
     
     ui->messageInput->clear();
     
-    // 模拟好友回复（测试用）
     QTimer::singleShot(1000, this, [this, message]() {
         QString reply = QString::fromUtf8("收到你的消息: ") + message;
         appendMessage(currentChatFriend, reply, false);

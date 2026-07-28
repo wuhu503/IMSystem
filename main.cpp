@@ -11,6 +11,7 @@ int main(int argc, char *argv[])
     if (loginDialog.exec() == QDialog::Accepted) {
         // 登录成功，显示主界面
         MainWindow w;
+        w.setUsername(loginDialog.username());  // 传递用户名
         w.show();
         return a.exec();
     }
