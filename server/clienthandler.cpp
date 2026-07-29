@@ -1,5 +1,6 @@
 ﻿#include "clienthandler.h"
 #include "authservice.h"
+#include "friendservice.h"
 #include <cstring>
 
 ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
@@ -123,6 +124,43 @@ void ClientHandler::handleMessage(const Message &msg)
         // 登录请求 → 调用 AuthService 处理
         qInfo() << "收到登录请求";
         AuthService::instance().handleLogin(this, msg);
+        break;
+        
+    // ========== 好友系统 ==========
+    case MessageType::REQ_ADD_FRIEND:
+        // 添加好友请求
+        qInfo() << "收到添加好友请求";
+        FriendService::instance().handleAddFriend(this, msg);
+        break;
+        
+    case MessageType::REQ_FRIEND_LIST:
+        // 获取好友列表
+        qInfo() << "收到好友列表请求";
+        FriendService::instance().handleFriendList(this, msg);
+        break;
+        
+    case MessageType::REQ_ACCEPT_FRIEND:
+        // 接受好友请求
+        qInfo() << "收到接受好友请求";
+        FriendService::instance().handleAcceptFriend(this, msg);
+        break;
+        
+    case MessageType::REQ_REJECT_FRIEND:
+        // 拒绝好友请求
+        qInfo() << "收到拒绝好友请求";
+        FriendService::instance().handleRejectFriend(this, msg);
+        break;
+        
+    case MessageType::REQ_DELETE_FRIEND:
+        // 删除好友
+        qInfo() << "收到删除好友请求";
+        FriendService::instance().handleDeleteFriend(this, msg);
+        break;
+        
+    case MessageType::REQ_SEARCH_USER:
+        // 搜索用户
+        qInfo() << "收到搜索用户请求";
+        FriendService::instance().handleSearchUser(this, msg);
         break;
         
     case MessageType::MSG_TEXT:

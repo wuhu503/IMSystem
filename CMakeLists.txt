@@ -40,6 +40,8 @@ qt_add_executable(IMServer
     server/database/dbmanager.cpp
     server/service/authservice.h
     server/service/authservice.cpp
+    server/service/friendservice.h
+    server/service/friendservice.cpp
 )
 
 target_link_libraries(IMServer

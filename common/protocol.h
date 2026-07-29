@@ -22,11 +22,19 @@ enum class MessageType : uint16_t {
     RSP_LOGOUT          = 1005,  // 登出响应
 
     // 好友系统 (3xxx)
-    REQ_ADD_FRIEND      = 3001,  // 添加好友
-    RSP_ADD_FRIEND      = 3002,  // 好友响应
-    REQ_FRIEND_LIST     = 3003,  // 好友列表
+    REQ_ADD_FRIEND      = 3001,  // 添加好友请求
+    RSP_ADD_FRIEND      = 3002,  // 添加好友响应
+    REQ_FRIEND_LIST     = 3003,  // 好友列表请求
     RSP_FRIEND_LIST     = 3004,  // 好友列表响应
     NTF_FRIEND_STATUS   = 3005,  // 好友上线/下线通知
+    REQ_ACCEPT_FRIEND   = 3006,  // 接受好友请求
+    RSP_ACCEPT_FRIEND   = 3007,  // 接受好友响应
+    REQ_REJECT_FRIEND   = 3008,  // 拒绝好友请求
+    RSP_REJECT_FRIEND   = 3009,  // 拒绝好友响应
+    REQ_DELETE_FRIEND   = 3010,  // 删除好友请求
+    RSP_DELETE_FRIEND   = 3011,  // 删除好友响应
+    REQ_SEARCH_USER     = 3012,  // 搜索用户请求
+    RSP_SEARCH_USER     = 3013,  // 搜索用户响应
 
     // 聊天消息 (4xxx)
     MSG_TEXT             = 4001,  // 文本消息

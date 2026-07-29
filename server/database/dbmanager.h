@@ -7,6 +7,8 @@
 #include <QString>
 #include <QList>
 #include <QVariantMap>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QDebug>
 #include <QCoreApplication>
 
@@ -45,7 +47,34 @@ public:
     //更新用户状态
     void updateUserStatus(qint64 userId, int status);
     
-
+    // ========== 好友操作 ==========
+    
+    // 添加好友申请
+    bool addFriendRequest(qint64 userId, qint64 friendId);
+    
+    // 接受好友请求
+    bool acceptFriendRequest(qint64 userId, qint64 friendId);
+    
+    // 拒绝好友请求
+    bool rejectFriendRequest(qint64 userId, qint64 friendId);
+    
+    // 删除好友
+    bool deleteFriend(qint64 userId, qint64 friendId);
+    
+    // 检查是否是好友
+    bool isFriend(qint64 userId, qint64 friendId);
+    
+    // 检查是否有待处理的好友请求
+    bool hasPendingFriendRequest(qint64 userId, qint64 friendId);
+    
+    // 获取好友列表
+    QJsonArray getFriendList(qint64 userId);
+    
+    // 获取待处理的好友请求
+    QJsonArray getPendingFriendRequests(qint64 userId);
+    
+    // 搜索用户
+    QJsonArray searchUsers(const QString &keyword, qint64 excludeUserId);
 
 private:
     DbManager();   // 私有构造函数
