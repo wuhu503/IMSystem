@@ -2,6 +2,7 @@
 #include "clienthandler.h"
 #include "message.h"
 #include "dbmanager.h"
+#include "usermanager.h"
 #include "utils.h"
 #include <QJsonArray>
 #include <QJsonObject>
@@ -22,7 +23,6 @@ ChatService::~ChatService()
     qInfo() << "ChatService 销毁";
 }
 
-// 处理文本消息
 void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
 {
     qInfo() << "处理文本消息";
@@ -31,7 +31,6 @@ void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
     QString receiverUsername = body["receiver"].toString();
     QString content = body["content"].toString();
     
-    // 验证参数
     if (receiverUsername.isEmpty() || content.isEmpty()) {
         sendErrorResponse(client, MessageType::MSG_ACK, 
                          msg.sequence(), "接收者或消息内容不能为空");
@@ -52,17 +51,14 @@ void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
         return;
     }
     
-    // 检查是否还是好友关系
     if (!DbManager::instance().isFriend(senderId, receiverId)) {
         sendErrorResponse(client, MessageType::MSG_ACK, 
                          msg.sequence(), "对方不是您的好友，无法发送消息");
         return;
     }
     
-    // 生成消息ID
     QString msgId = Utils::generateUUID();
     
-    // 存储消息到数据库
     if (!DbManager::instance().saveMessage(msgId, senderId, receiverId, 
                                             static_cast<int>(MessageType::MSG_TEXT), 
                                             content)) {
@@ -71,19 +67,14 @@ void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
         return;
     }
     
-    // 返回消息确认
     QJsonObject ackData;
     ackData["msg_id"] = msgId;
     ackData["success"] = true;
     sendSuccessResponse(client, MessageType::MSG_ACK, msg.sequence(), ackData);
     
-    // 转发消息给接收者
     forwardMessage(senderId, receiverId, msg);
-    
-    qInfo() << "消息已发送:" << senderId << "->" << receiverId;
 }
 
-// 处理历史消息请求
 void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg)
 {
     qInfo() << "处理历史消息请求";
@@ -107,7 +98,6 @@ void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg
         return;
     }
     
-    // 获取历史消息
     QJsonArray messages = DbManager::instance().getChatHistory(userId, friendId, limit, offset);
     
     QJsonObject data;
@@ -116,26 +106,39 @@ void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg
     data["friend_username"] = friendUsername;
     
     sendSuccessResponse(client, MessageType::MSG_HISTORY, msg.sequence(), data);
-    
-    qInfo() << "获取历史消息:" << userId << "和" << friendId << "，共" << messages.size() << "条";
 }
 
-// 处理消息确认
 void ChatService::handleMessageAck(ClientHandler *client, const Message &msg)
 {
+    Q_UNUSED(client);
+    Q_UNUSED(msg);
     qInfo() << "收到消息确认";
-    // TODO: 更新消息状态为已读
 }
 
-// 转发消息给目标用户
+// 核心：消息转发
 void ChatService::forwardMessage(qint64 senderId, qint64 receiverId, const Message &msg)
 {
-    // TODO: 实现消息转发，需要维护在线用户列表
-    // 当前实现：如果接收者在线，直接转发
-    qInfo() << "转发消息:" << senderId << "->" << receiverId;
+    ClientHandler *receiverHandler = UserManager::instance().getHandler(receiverId);
+    
+    if (receiverHandler) {
+        // 获取发送者用户名
+        QVariantMap senderInfo = DbManager::instance().getUserInfo(senderId);
+        QString senderUsername = senderInfo["username"].toString();
+        
+        // 构造转发消息
+        QJsonObject body = msg.jsonBody();
+        body["sender"] = senderUsername;
+        
+        Message forwardMsg(MessageType::MSG_TEXT);
+        forwardMsg.setJsonBody(body);
+        
+        receiverHandler->sendMessage(forwardMsg);
+        qInfo() << "消息已转发:" << senderUsername << "->" << receiverId;
+    } else {
+        qInfo() << "接收者离线，消息已存储:" << senderId << "->" << receiverId;
+    }
 }
 
-// 创建响应消息
 Message ChatService::createResponse(MessageType type, uint32_t sequence, 
                                      const QJsonObject &body)
 {
@@ -145,7 +148,6 @@ Message ChatService::createResponse(MessageType type, uint32_t sequence,
     return msg;
 }
 
-// 发送错误响应
 void ChatService::sendErrorResponse(ClientHandler *client, MessageType type, 
                                      uint32_t sequence, const QString &errorMessage)
 {
@@ -159,7 +161,6 @@ void ChatService::sendErrorResponse(ClientHandler *client, MessageType type,
     qWarning() << "聊天操作失败:" << errorMessage;
 }
 
-// 发送成功响应
 void ChatService::sendSuccessResponse(ClientHandler *client, MessageType type, 
                                        uint32_t sequence, const QJsonObject &data)
 {
@@ -167,7 +168,6 @@ void ChatService::sendSuccessResponse(ClientHandler *client, MessageType type,
     body["success"] = true;
     body["message"] = "操作成功";
     
-    // 合并数据
     for (auto it = data.begin(); it != data.end(); ++it) {
         body[it.key()] = it.value();
     }

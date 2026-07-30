@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QJsonObject>
+#include <QDateTime>
 #include "message.h"
 #include "tcpclient.h"
 
@@ -19,7 +20,6 @@ public:
     ~RegisterDialog();
 
 signals:
-    // 注册成功信号，传递用户名给登录界面
     void registerSuccess(const QString &username);
 
 private slots:
@@ -34,8 +34,8 @@ private:
     void handleRegisterResponse(const QJsonObject &body);
 
     Ui::RegisterDialog *ui;
-    QString m_username;  // 保存注册的用户名
-    QString m_password;  // 保存注册的密码
+    QString m_username;
+    QString m_password;
 };
 
 #endif // REGISTERDIALOG_H

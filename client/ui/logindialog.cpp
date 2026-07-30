@@ -13,7 +13,6 @@ LoginDialog::LoginDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowTitle(QString::fromUtf8("IMSystem - 登录"));
     
-    // 为端口输入框添加整数验证器
     QIntValidator *portValidator = new QIntValidator(1, 65535, this);
     ui->portEdit->setValidator(portValidator);
     
@@ -21,7 +20,6 @@ LoginDialog::LoginDialog(QWidget *parent) :
             this, &LoginDialog::onConnectionEstablished);
     connect(&TcpClient::instance(), &TcpClient::messageReceived,
             this, &LoginDialog::onMessageReceived);
-
     connect(&TcpClient::instance(), &TcpClient::errorOccurred,
             this, &LoginDialog::onErrorOccurred);
 }
@@ -36,10 +34,8 @@ QString LoginDialog::username() const
     return m_username;
 }
 
-// 登录按钮点击
 void LoginDialog::on_loginBtn_clicked()
 {
-    // 防止重复点击
     if (!ui->loginBtn->isEnabled() || TcpClient::instance().isConnecting()) {
         return;
     }
@@ -66,18 +62,15 @@ void LoginDialog::on_loginBtn_clicked()
         return;
     }
 
-    // 保存登录信息
     m_username = username;
     m_password = password;
     m_server = server;
     m_port = port;
     
-    // 禁用按钮
     ui->loginBtn->setEnabled(false);
     ui->loginBtn->setText(QString::fromUtf8("连接中..."));
     ui->registerBtn->setEnabled(false);
     
-    // 如果已经连接，直接发送登录请求
     if (TcpClient::instance().isConnect()) {
         sendLoginRequest(m_username, m_password);
     } else {
@@ -85,26 +78,21 @@ void LoginDialog::on_loginBtn_clicked()
     }
 }
 
-// 注册按钮点击
 void LoginDialog::on_registerBtn_clicked()
 {
     RegisterDialog registerDialog(this);
     connect(&registerDialog, &RegisterDialog::registerSuccess,
             this, &LoginDialog::onRegisterSuccess);
-    
     registerDialog.exec();
 }
 
-// 连接成功后发送登录请求
 void LoginDialog::onConnectionEstablished()
 {
-    // 使用保存的用户名和密码
     if (!m_username.isEmpty() && !m_password.isEmpty()) {
         sendLoginRequest(m_username, m_password);
     }
 }
 
-// 收到服务器响应
 void LoginDialog::onMessageReceived(const Message &msg)
 {
     if (msg.type() == MessageType::RSP_LOGIN) {
@@ -112,7 +100,6 @@ void LoginDialog::onMessageReceived(const Message &msg)
     }
 }
 
-// 连接错误
 void LoginDialog::onErrorOccurred(const QString &error)
 {
     ui->loginBtn->setEnabled(true);
@@ -123,7 +110,6 @@ void LoginDialog::onErrorOccurred(const QString &error)
                           QString::fromUtf8("无法连接服务器: ") + error);
 }
 
-// 发送登录请求
 void LoginDialog::sendLoginRequest(const QString &username, const QString &password)
 {
     Message msg(MessageType::REQ_LOGIN);
@@ -137,7 +123,6 @@ void LoginDialog::sendLoginRequest(const QString &username, const QString &passw
     TcpClient::instance().sendMessage(msg);
 }
 
-// 处理登录响应
 void LoginDialog::handleLoginResponse(const QJsonObject &body)
 {
     ui->loginBtn->setEnabled(true);
@@ -148,7 +133,6 @@ void LoginDialog::handleLoginResponse(const QJsonObject &body)
     QString message = body["message"].toString();
 
     if (success) {
-        // 保存token
         QString token = body["token"].toString();
         if (!token.isEmpty()) {
             TcpClient::instance().setToken(token);
@@ -161,10 +145,8 @@ void LoginDialog::handleLoginResponse(const QJsonObject &body)
     }
 }
 
-// 处理注册成功
 void LoginDialog::onRegisterSuccess(const QString &username)
 {
-    // 自动填充注册成功的用户名
     ui->usernameEdit->setText(username);
     ui->passwordEdit->setFocus();
 }

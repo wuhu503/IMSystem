@@ -23,7 +23,6 @@ RegisterDialog::~RegisterDialog()
     delete ui;
 }
 
-// 注册按钮点击
 void RegisterDialog::on_registerBtn_clicked()
 {
     if (!ui->registerBtn->isEnabled() || TcpClient::instance().isConnecting()) {
@@ -64,17 +63,24 @@ void RegisterDialog::on_registerBtn_clicked()
     if (TcpClient::instance().isConnect()) {
         sendRegisterRequest(m_username, m_password);
     } else {
-        TcpClient::instance().connectToServer("127.0.0.1", 8080);
+        // 使用登录界面配置的服务器地址，而非硬编码
+        QString server = TcpClient::instance().host();
+        quint16 port = TcpClient::instance().port();
+        
+        if (server.isEmpty() || port == 0) {
+            server = "127.0.0.1";
+            port = 8080;
+        }
+        
+        TcpClient::instance().connectToServer(server, port);
     }
 }
 
-// 返回按钮
 void RegisterDialog::on_backBtn_clicked()
 {
     reject();
 }
 
-// 连接成功后发送注册请求
 void RegisterDialog::onConnectionEstablished()
 {
     if (!m_username.isEmpty() && !m_password.isEmpty()) {
@@ -82,7 +88,6 @@ void RegisterDialog::onConnectionEstablished()
     }
 }
 
-// 收到服务器响应
 void RegisterDialog::onMessageReceived(const Message &msg)
 {
     if (msg.type() == MessageType::RSP_REGISTER) {
@@ -90,7 +95,6 @@ void RegisterDialog::onMessageReceived(const Message &msg)
     }
 }
 
-// 连接错误
 void RegisterDialog::onErrorOccurred(const QString &error)
 {
     ui->registerBtn->setEnabled(true);
@@ -101,11 +105,10 @@ void RegisterDialog::onErrorOccurred(const QString &error)
                           QString::fromUtf8("无法连接服务器: ") + error);
 }
 
-// 发送注册请求
 void RegisterDialog::sendRegisterRequest(const QString &username, const QString &password)
 {
     Message msg(MessageType::REQ_REGISTER);
-    msg.setSequence(2);
+    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
 
     QJsonObject body;
     body["username"] = username;
@@ -115,7 +118,6 @@ void RegisterDialog::sendRegisterRequest(const QString &username, const QString 
     TcpClient::instance().sendMessage(msg);
 }
 
-// 处理注册响应
 void RegisterDialog::handleRegisterResponse(const QJsonObject &body)
 {
     ui->registerBtn->setEnabled(true);

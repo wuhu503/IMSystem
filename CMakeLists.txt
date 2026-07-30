@@ -1,7 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.19)
 project(IMSystem LANGUAGES CXX)
 
-# 启用自动处理 UI 文件
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -19,15 +18,8 @@ add_library(common STATIC
     common/utils.cpp
 )
 
-target_link_libraries(common
-    PUBLIC
-        Qt::Core
-)
-
-target_include_directories(common
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/common
-)
+target_link_libraries(common PUBLIC Qt::Core)
+target_include_directories(common PUBLIC ${CMAKE_SOURCE_DIR}/common)
 
 # ========== 服务端可执行文件 ==========
 qt_add_executable(IMServer
@@ -36,6 +28,8 @@ qt_add_executable(IMServer
     server/tcpserver.cpp
     server/clienthandler.h
     server/clienthandler.cpp
+    server/usermanager.h
+    server/usermanager.cpp
     server/database/dbmanager.h
     server/database/dbmanager.cpp
     server/service/authservice.h
@@ -46,13 +40,7 @@ qt_add_executable(IMServer
     server/service/chatservice.cpp
 )
 
-target_link_libraries(IMServer
-    PRIVATE
-        common
-        Qt::Core
-        Qt::Network
-        Qt::Sql
-)
+target_link_libraries(IMServer PRIVATE common Qt::Core Qt::Network Qt::Sql)
 
 target_include_directories(IMServer PRIVATE 
     ${CMAKE_SOURCE_DIR}/server
@@ -60,7 +48,6 @@ target_include_directories(IMServer PRIVATE
     ${CMAKE_SOURCE_DIR}/server/service
 )
 
-# 复制 init.sql 到构建目录
 add_custom_command(TARGET IMServer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/server/database/init.sql"
@@ -85,15 +72,8 @@ qt_add_executable(IMClient
     client/ui/registerdialog.ui
 )
 
-target_link_libraries(IMClient
-    PRIVATE
-        common
-        Qt::Core
-        Qt::Widgets
-        Qt::Network
-)
+target_link_libraries(IMClient PRIVATE common Qt::Core Qt::Widgets Qt::Network)
 
-# include 路径配置
 target_include_directories(IMClient PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/IMClient_autogen/include
     ${CMAKE_SOURCE_DIR}/client

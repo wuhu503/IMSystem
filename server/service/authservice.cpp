@@ -2,6 +2,7 @@
 #include "clienthandler.h"
 #include "message.h"
 #include "dbmanager.h"
+#include "usermanager.h"
 #include "utils.h"
 
 AuthService& AuthService::instance()
@@ -24,54 +25,45 @@ void AuthService::handleRegister(ClientHandler *client, const Message &msg)
 {
     qInfo() << "处理注册请求";
     
-    // 1. 解析请求 JSON
     QJsonObject body = msg.jsonBody();
     QString username = body["username"].toString();
     QString password = body["password"].toString();
     
-    // 2. 验证参数
     if (username.isEmpty() || password.isEmpty()) {
         sendErrorResponse(client, MessageType::RSP_REGISTER, 
                          msg.sequence(), "用户名和密码不能为空");
         return;
     }
     
-    // 3. 检查用户名长度
     if (username.length() < 3 || username.length() > 20) {
         sendErrorResponse(client, MessageType::RSP_REGISTER, 
                          msg.sequence(), "用户名长度必须在3-20之间");
         return;
     }
     
-    // 4. 检查密码长度
     if (password.length() < 6) {
         sendErrorResponse(client, MessageType::RSP_REGISTER, 
                          msg.sequence(), "密码长度不能少于6位");
         return;
     }
     
-    // 5. 检查用户名是否已存在
     if (DbManager::instance().isUsernameExists(username)) {
         sendErrorResponse(client, MessageType::RSP_REGISTER, 
                          msg.sequence(), "用户名已存在");
         return;
     }
     
-    // 6. 生成盐值和密码哈希
     QString salt = Utils::generateSalt();
     QString passwordHash = Utils::hashPassword(password, salt);
     
-    // 7. 存入数据库
     if (!DbManager::instance().insertUser(username, passwordHash, salt)) {
         sendErrorResponse(client, MessageType::RSP_REGISTER, 
                          msg.sequence(), "注册失败，请稍后重试");
         return;
     }
     
-    // 8. 获取用户ID
     qint64 userId = DbManager::instance().getUserId(username);
     
-    // 9. 返回成功响应
     QJsonObject responseBody;
     responseBody["success"] = true;
     responseBody["user_id"] = userId;
@@ -88,19 +80,23 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
 {
     qInfo() << "处理登录请求";
     
-    // 1. 解析请求 JSON
     QJsonObject body = msg.jsonBody();
     QString username = body["username"].toString();
     QString password = body["password"].toString();
     
-    // 2. 验证参数
     if (username.isEmpty() || password.isEmpty()) {
         sendErrorResponse(client, MessageType::RSP_LOGIN, 
                          msg.sequence(), "用户名和密码不能为空");
         return;
     }
     
-    // 3. 检查用户是否存在
+    // 如果当前连接已经登录了，先下线旧用户
+    if (client->userId() != -1) {
+        qInfo() << "当前连接已登录用户" << client->userId() << "，先下线";
+        UserManager::instance().userOffline(client->userId());
+        DbManager::instance().updateUserStatus(client->userId(), 0);
+    }
+    
     qint64 userId = DbManager::instance().getUserId(username);
     if (userId == -1) {
         sendErrorResponse(client, MessageType::RSP_LOGIN, 
@@ -108,12 +104,10 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
         return;
     }
     
-    // 4. 获取用户信息（盐值、密码哈希）
     QVariantMap userInfo = DbManager::instance().getUserInfo(userId);
     QString salt = userInfo["salt"].toString();
     QString storedHash = userInfo["password_hash"].toString();
     
-    // 5. 验证密码
     QString inputHash = Utils::hashPassword(password, salt);
     if (inputHash != storedHash) {
         sendErrorResponse(client, MessageType::RSP_LOGIN, 
@@ -121,16 +115,38 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
         return;
     }
     
-    // 6. 生成 Token（使用 UUID）
+    // 检查该用户是否已在其他连接登录
+    if (UserManager::instance().isOnline(userId)) {
+        ClientHandler *oldHandler = UserManager::instance().getHandler(userId);
+        if (oldHandler && oldHandler != client) {
+            qInfo() << "用户" << userId << "在其他地方登录，踢掉旧连接";
+            
+            QJsonObject kickBody;
+            kickBody["success"] = false;
+            kickBody["message"] = "您的账号在其他地方登录";
+            Message kickMsg(MessageType::RSP_LOGIN);
+            kickMsg.setJsonBody(kickBody);
+            oldHandler->sendMessage(kickMsg);
+            
+            // 先从UserManager移除，再断开连接
+            UserManager::instance().userOffline(userId);
+            oldHandler->socket()->disconnectFromHost();
+        }
+    }
+    
+    // 生成Token
     QString token = Utils::generateUUID();
     
-    // 7. 设置用户ID（标记为已登录）
+    // 设置用户信息
     client->setUserId(userId);
+    client->setToken(token);
     
-    // 8. 更新在线状态
+    // 注册到在线用户管理
+    UserManager::instance().userOnline(userId, client);
+    
+    // 更新在线状态
     DbManager::instance().updateUserStatus(userId, 1);
     
-    // 9. 返回成功响应
     QJsonObject responseBody;
     responseBody["success"] = true;
     responseBody["token"] = token;
@@ -152,7 +168,6 @@ Message AuthService::createResponse(MessageType type, uint32_t sequence,
     msg.setJsonBody(body);
     return msg;
 }
-
 
 void AuthService::sendErrorResponse(ClientHandler *client, MessageType type, 
                                     uint32_t sequence, const QString &errorMessage)

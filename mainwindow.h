@@ -5,6 +5,7 @@
 #include <QListWidgetItem>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDateTime>
 #include "message.h"
 
 QT_BEGIN_NAMESPACE
@@ -29,14 +30,10 @@ private slots:
     void onSearchTextChanged(const QString &text);
     void on_actionExit_triggered();
     void on_actionAbout_triggered();
-    
-    // 好友相关槽函数
     void onAddFriendClicked();
     void onRefreshFriendsClicked();
     void onFriendRequestsClicked();
     void onDeleteFriendClicked();
-    
-    // 网络消息处理
     void onMessageReceived(const Message &msg);
     void onConnectionEstablished();
     void onConnectionClosed();
@@ -45,24 +42,20 @@ private slots:
 private:
     void initFriendList();
     void appendMessage(const QString &nickname, const QString &message, bool isSelf);
-    
-    // 好友功能
     void requestFriendList();
     void requestPendingFriendRequests();
     void requestChatHistory(const QString &friendUsername);
+    void handleHeartbeat(const QJsonObject &body);
     void handleFriendListResponse(const QJsonObject &body);
+    void handlePendingRequestsResponse(const QJsonObject &body);
     void handleAddFriendResponse(const QJsonObject &body);
     void handleSearchUserResponse(const QJsonObject &body);
     void handleAcceptFriendResponse(const QJsonObject &body);
     void handleRejectFriendResponse(const QJsonObject &body);
     void handleDeleteFriendResponse(const QJsonObject &body);
-    
-    // 聊天功能
     void handleTextMessageReceived(const QJsonObject &body);
     void handleMessageAckResponse(const QJsonObject &body);
     void handleHistoryResponse(const QJsonObject &body);
-    
-    // UI更新
     void updateFriendList(const QJsonArray &friends);
     void showAddFriendDialog();
     void showFriendRequestsDialog();
