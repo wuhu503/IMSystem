@@ -42,6 +42,8 @@ qt_add_executable(IMServer
     server/service/authservice.cpp
     server/service/friendservice.h
     server/service/friendservice.cpp
+    server/service/chatservice.h
+    server/service/chatservice.cpp
 )
 
 target_link_libraries(IMServer

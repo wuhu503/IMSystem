@@ -5,7 +5,7 @@
 #include <QListWidgetItem>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "message.h"
+#include "Message.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -49,12 +49,18 @@ private:
     
     // 好友功能
     void requestFriendList();
+    void requestChatHistory(const QString &friendUsername);
     void handleFriendListResponse(const QJsonObject &body);
     void handleAddFriendResponse(const QJsonObject &body);
     void handleSearchUserResponse(const QJsonObject &body);
     void handleAcceptFriendResponse(const QJsonObject &body);
     void handleRejectFriendResponse(const QJsonObject &body);
     void handleDeleteFriendResponse(const QJsonObject &body);
+    
+    // 聊天功能
+    void handleTextMessageReceived(const QJsonObject &body);
+    void handleMessageAckResponse(const QJsonObject &body);
+    void handleHistoryResponse(const QJsonObject &body);
     
     // UI更新
     void updateFriendList(const QJsonArray &friends);

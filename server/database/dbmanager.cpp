@@ -467,3 +467,108 @@ QJsonArray DbManager::searchUsers(const QString &keyword, qint64 excludeUserId)
     
     return users;
 }
+
+// ========== 消息操作 ==========
+
+bool DbManager::saveMessage(const QString &msgId, qint64 senderId, qint64 receiverId,
+                            int type, const QString &content)
+{
+    QSqlQuery query;
+    query.prepare(
+        "INSERT INTO messages (msg_id, sender_id, receiver_id, type, content, timestamp, is_read) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0)"
+    );
+    
+    query.addBindValue(msgId);
+    query.addBindValue(senderId);
+    query.addBindValue(receiverId);
+    query.addBindValue(type);
+    query.addBindValue(content);
+    query.addBindValue(QDateTime::currentSecsSinceEpoch());
+    
+    if (!query.exec()) {
+        qCritical() << "保存消息失败:" << query.lastError().text();
+        return false;
+    }
+    
+    qInfo() << "消息已保存:" << msgId;
+    return true;
+}
+
+QJsonArray DbManager::getChatHistory(qint64 userId, qint64 friendId, 
+                                     int limit, int offset)
+{
+    QJsonArray messages;
+    
+    QSqlQuery query;
+    query.prepare(
+        "SELECT m.msg_id, m.sender_id, m.receiver_id, m.type, m.content, "
+        "m.timestamp, m.is_read, "
+        "u1.username as sender_name, u2.username as receiver_name "
+        "FROM messages m "
+        "LEFT JOIN users u1 ON m.sender_id = u1.id "
+        "LEFT JOIN users u2 ON m.receiver_id = u2.id "
+        "WHERE (m.sender_id = ? AND m.receiver_id = ?) "
+        "OR (m.sender_id = ? AND m.receiver_id = ?) "
+        "ORDER BY m.timestamp DESC "
+        "LIMIT ? OFFSET ?"
+    );
+    query.addBindValue(userId);
+    query.addBindValue(friendId);
+    query.addBindValue(friendId);
+    query.addBindValue(userId);
+    query.addBindValue(limit);
+    query.addBindValue(offset);
+    
+    if (!query.exec()) {
+        qCritical() << "获取聊天历史失败:" << query.lastError().text();
+        return messages;
+    }
+    
+    while (query.next()) {
+        QJsonObject msgObj;
+        msgObj["msg_id"] = query.value("msg_id").toString();
+        msgObj["sender_id"] = query.value("sender_id").toLongLong();
+        msgObj["receiver_id"] = query.value("receiver_id").toLongLong();
+        msgObj["sender_name"] = query.value("sender_name").toString();
+        msgObj["receiver_name"] = query.value("receiver_name").toString();
+        msgObj["type"] = query.value("type").toInt();
+        msgObj["content"] = query.value("content").toString();
+        msgObj["timestamp"] = query.value("timestamp").toLongLong();
+        msgObj["is_read"] = query.value("is_read").toInt();
+        messages.append(msgObj);
+    }
+    
+    return messages;
+}
+
+bool DbManager::markMessageAsRead(const QString &msgId)
+{
+    QSqlQuery query;
+    query.prepare("UPDATE messages SET is_read = 1 WHERE msg_id = ?");
+    query.addBindValue(msgId);
+    
+    if (!query.exec()) {
+        qCritical() << "标记消息已读失败:" << query.lastError().text();
+        return false;
+    }
+    
+    return true;
+}
+
+int DbManager::getUnreadMessageCount(qint64 userId, qint64 senderId)
+{
+    QSqlQuery query;
+    query.prepare(
+        "SELECT COUNT(*) FROM messages "
+        "WHERE receiver_id = ? AND sender_id = ? AND is_read = 0"
+    );
+    query.addBindValue(userId);
+    query.addBindValue(senderId);
+    
+    if (!query.exec() || !query.next()) {
+        return 0;
+    }
+    
+    return query.value(0).toInt();
+}

@@ -87,7 +87,9 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
     currentChatFriend = nickname;
     ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
     ui->messageBrowser->clear();
-    appendMessage(nickname, QString::fromUtf8("你好，有什么可以帮你的吗？"), false);
+    
+    // 请求历史消息
+    requestChatHistory(nickname);
 }
 
 void MainWindow::onSendClicked()
@@ -102,13 +104,20 @@ void MainWindow::onSendClicked()
         return;
     }
     
+    // 发送消息到服务端
+    Message msg(MessageType::MSG_TEXT);
+    msg.setSequence(1);
+    
+    QJsonObject body;
+    body["receiver"] = currentChatFriend;
+    body["content"] = message;
+    msg.setJsonBody(body);
+    
+    TcpClient::instance().sendMessage(msg);
+    
+    // 本地显示消息
     appendMessage(m_username, message, true);
     ui->messageInput->clear();
-    
-    QTimer::singleShot(1000, this, [this, message]() {
-        QString reply = QString::fromUtf8("收到你的消息: ") + message;
-        appendMessage(currentChatFriend, reply, false);
-    });
 }
 
 void MainWindow::onSearchTextChanged(const QString &text)
@@ -196,6 +205,15 @@ void MainWindow::onMessageReceived(const Message &msg)
     case MessageType::RSP_DELETE_FRIEND:
         handleDeleteFriendResponse(msg.jsonBody());
         break;
+    case MessageType::MSG_TEXT:
+        handleTextMessageReceived(msg.jsonBody());
+        break;
+    case MessageType::MSG_ACK:
+        handleMessageAckResponse(msg.jsonBody());
+        break;
+    case MessageType::MSG_HISTORY:
+        handleHistoryResponse(msg.jsonBody());
+        break;
     default:
         break;
     }
@@ -222,6 +240,21 @@ void MainWindow::requestFriendList()
     Message msg(MessageType::REQ_FRIEND_LIST);
     msg.setSequence(1);
     msg.setJsonBody(QJsonObject());
+    TcpClient::instance().sendMessage(msg);
+}
+
+// 请求聊天历史
+void MainWindow::requestChatHistory(const QString &friendUsername)
+{
+    Message msg(MessageType::MSG_HISTORY);
+    msg.setSequence(1);
+    
+    QJsonObject body;
+    body["username"] = friendUsername;
+    body["limit"] = 50;
+    body["offset"] = 0;
+    msg.setJsonBody(body);
+    
     TcpClient::instance().sendMessage(msg);
 }
 
@@ -325,6 +358,55 @@ void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
         requestFriendList(); // 刷新好友列表
     } else {
         QMessageBox::warning(this, QString::fromUtf8("失败"), message);
+    }
+}
+
+// 处理接收到的文本消息
+void MainWindow::handleTextMessageReceived(const QJsonObject &body)
+{
+    QString sender = body["sender"].toString();
+    QString content = body["content"].toString();
+    
+    // 如果当前正在和发送者聊天，直接显示
+    if (sender == currentChatFriend) {
+        appendMessage(sender, content, false);
+    } else {
+        // TODO: 显示未读消息提示
+        qInfo() << "收到消息，但当前聊天对象不是发送者:" << sender;
+    }
+}
+
+// 处理消息确认响应
+void MainWindow::handleMessageAckResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    if (!success) {
+        QString message = body["message"].toString();
+        qWarning() << "消息发送失败:" << message;
+        QMessageBox::warning(this, QString::fromUtf8("发送失败"), message);
+    }
+}
+
+// 处理历史消息响应
+void MainWindow::handleHistoryResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    if (!success) {
+        QString message = body["message"].toString();
+        qWarning() << "获取历史消息失败:" << message;
+        return;
+    }
+    
+    QJsonArray messages = body["messages"].toArray();
+    
+    // 显示历史消息（按时间顺序）
+    for (int i = messages.size() - 1; i >= 0; --i) {
+        QJsonObject msgObj = messages[i].toObject();
+        QString senderName = msgObj["sender_name"].toString();
+        QString content = msgObj["content"].toString();
+        bool isSelf = (senderName == m_username);
+        
+        appendMessage(senderName, content, isSelf);
     }
 }
 
