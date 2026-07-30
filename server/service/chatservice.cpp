@@ -52,6 +52,13 @@ void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
         return;
     }
     
+    // 检查是否还是好友关系
+    if (!DbManager::instance().isFriend(senderId, receiverId)) {
+        sendErrorResponse(client, MessageType::MSG_ACK, 
+                         msg.sequence(), "对方不是您的好友，无法发送消息");
+        return;
+    }
+    
     // 生成消息ID
     QString msgId = Utils::generateUUID();
     

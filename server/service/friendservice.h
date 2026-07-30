@@ -27,6 +27,7 @@ public:
     void handleRejectFriend(ClientHandler *client, const Message &msg);
     void handleDeleteFriend(ClientHandler *client, const Message &msg);
     void handleSearchUser(ClientHandler *client, const Message &msg);
+    void handlePendingRequests(ClientHandler *client, const Message &msg);
 
     // 广播好友状态变化
     void broadcastFriendStatus(qint64 userId, int status);

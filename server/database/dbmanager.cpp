@@ -315,7 +315,7 @@ bool DbManager::rejectFriendRequest(qint64 userId, qint64 friendId)
 
 bool DbManager::deleteFriend(qint64 userId, qint64 friendId)
 {
-    // 删除双向好友关系
+    // 1. 删除双向好友关系
     QSqlQuery query;
     query.prepare(
         "DELETE FROM friendships "
@@ -329,6 +329,24 @@ bool DbManager::deleteFriend(qint64 userId, qint64 friendId)
     if (!query.exec()) {
         qCritical() << "删除好友失败:" << query.lastError().text();
         return false;
+    }
+    
+    // 2. 删除双方的聊天记录
+    QSqlQuery deleteMsgQuery;
+    deleteMsgQuery.prepare(
+        "DELETE FROM messages "
+        "WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)"
+    );
+    deleteMsgQuery.addBindValue(userId);
+    deleteMsgQuery.addBindValue(friendId);
+    deleteMsgQuery.addBindValue(friendId);
+    deleteMsgQuery.addBindValue(userId);
+    
+    if (!deleteMsgQuery.exec()) {
+        qWarning() << "删除聊天记录失败:" << deleteMsgQuery.lastError().text();
+        // 不返回false，因为好友关系已经删除了
+    } else {
+        qInfo() << "已删除用户" << userId << "和" << friendId << "的聊天记录";
     }
     
     qInfo() << "好友已删除:" << userId << "和" << friendId;

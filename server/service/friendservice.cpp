@@ -119,21 +119,21 @@ void FriendService::handleAcceptFriend(ClientHandler *client, const Message &msg
     QJsonObject body = msg.jsonBody();
     QString friendUsername = body["username"].toString();
     
-    qint64 userId = client->userId();
+    qint64 userId = client->userId();  // 当前用户（接受请求的人）
     if (userId == -1) {
         sendErrorResponse(client, MessageType::RSP_ACCEPT_FRIEND, 
                          msg.sequence(), "请先登录");
         return;
     }
     
-    qint64 friendId = DbManager::instance().getUserId(friendUsername);
+    qint64 friendId = DbManager::instance().getUserId(friendUsername);  // 发送请求的人
     if (friendId == -1) {
         sendErrorResponse(client, MessageType::RSP_ACCEPT_FRIEND, 
                          msg.sequence(), "用户不存在");
         return;
     }
     
-    // 接受好友请求
+    // 接受好友请求：friendId是发送请求的人，userId是接受请求的人
     if (!DbManager::instance().acceptFriendRequest(friendId, userId)) {
         sendErrorResponse(client, MessageType::RSP_ACCEPT_FRIEND, 
                          msg.sequence(), "接受好友请求失败");
@@ -256,6 +256,30 @@ void FriendService::handleSearchUser(ClientHandler *client, const Message &msg)
     sendSuccessResponse(client, MessageType::RSP_SEARCH_USER, msg.sequence(), data);
     
     qInfo() << "用户" << userId << "搜索用户:" << keyword << "，找到" << users.size() << "个结果";
+}
+
+// 处理获取待处理的好友请求
+void FriendService::handlePendingRequests(ClientHandler *client, const Message &msg)
+{
+    qInfo() << "处理获取待处理的好友请求";
+    
+    qint64 userId = client->userId();
+    if (userId == -1) {
+        sendErrorResponse(client, MessageType::RSP_FRIEND_LIST, 
+                         msg.sequence(), "请先登录");
+        return;
+    }
+    
+    // 获取待处理的好友请求
+    QJsonArray requests = DbManager::instance().getPendingFriendRequests(userId);
+    
+    QJsonObject data;
+    data["requests"] = requests;
+    data["count"] = requests.size();
+    
+    sendSuccessResponse(client, MessageType::RSP_FRIEND_LIST, msg.sequence(), data);
+    
+    qInfo() << "用户" << userId << "获取待处理好友请求，共" << requests.size() << "个";
 }
 
 // 广播好友状态变化

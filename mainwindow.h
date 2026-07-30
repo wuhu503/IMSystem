@@ -5,7 +5,7 @@
 #include <QListWidgetItem>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "Message.h"
+#include "message.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -45,10 +45,10 @@ private slots:
 private:
     void initFriendList();
     void appendMessage(const QString &nickname, const QString &message, bool isSelf);
-    QString createBubbleHtml(const QString &message, bool isSelf, const QString &time);
     
     // 好友功能
     void requestFriendList();
+    void requestPendingFriendRequests();
     void requestChatHistory(const QString &friendUsername);
     void handleFriendListResponse(const QJsonObject &body);
     void handleAddFriendResponse(const QJsonObject &body);
@@ -66,6 +66,7 @@ private:
     void updateFriendList(const QJsonArray &friends);
     void showAddFriendDialog();
     void showFriendRequestsDialog();
+    void showPendingRequestsDialog(const QJsonArray &requests);
 
     Ui::MainWindow *ui;
     QString currentChatFriend;

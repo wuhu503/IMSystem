@@ -35,6 +35,8 @@ enum class MessageType : uint16_t {
     RSP_DELETE_FRIEND   = 3011,  // 删除好友响应
     REQ_SEARCH_USER     = 3012,  // 搜索用户请求
     RSP_SEARCH_USER     = 3013,  // 搜索用户响应
+    REQ_PENDING_REQUESTS = 3014, // 获取待处理好友请求
+    RSP_PENDING_REQUESTS = 3015, // 待处理好友请求响应
 
     // 聊天消息 (4xxx)
     MSG_TEXT             = 4001,  // 文本消息

@@ -158,6 +158,11 @@ void ClientHandler::handleMessage(const Message &msg)
         FriendService::instance().handleSearchUser(this, msg);
         break;
         
+    case MessageType::REQ_PENDING_REQUESTS:
+        qInfo() << "收到获取待处理好友请求";
+        FriendService::instance().handlePendingRequests(this, msg);
+        break;
+        
     // ========== 聊天系统 ==========
     case MessageType::MSG_TEXT:
         qInfo() << "收到文本消息";

@@ -13,6 +13,12 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDebug>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QListWidget>
+#include <QPushButton>
+#include <QLabel>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -54,6 +60,8 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始状态
     ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
     ui->messageBrowser->setHtml("<html><body style='background-color:#f5f5f5; color:#999; text-align:center; padding:50px;'><h3>欢迎使用IMSystem</h3><p>请从左侧选择好友开始聊天</p></body></html>");
+    ui->sendBtn->setEnabled(false);
+    ui->messageInput->setEnabled(false);
 }
 
 MainWindow::~MainWindow()
@@ -88,6 +96,10 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
     ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
     ui->messageBrowser->clear();
     
+    // 启用发送功能
+    ui->sendBtn->setEnabled(true);
+    ui->messageInput->setEnabled(true);
+    
     // 请求历史消息
     requestChatHistory(nickname);
 }
@@ -115,7 +127,7 @@ void MainWindow::onSendClicked()
     
     TcpClient::instance().sendMessage(msg);
     
-    // 本地显示消息
+    // 本地显示消息（自己发送的在右边，绿色背景）
     appendMessage(m_username, message, true);
     ui->messageInput->clear();
 }
@@ -169,7 +181,7 @@ void MainWindow::onDeleteFriendClicked()
     
     QMessageBox::StandardButton reply = QMessageBox::question(this, 
         QString::fromUtf8("确认删除"), 
-        QString::fromUtf8("确定要删除好友 %1 吗？").arg(currentChatFriend),
+        QString::fromUtf8("确定要删除好友 %1 吗？\n删除后将同时删除聊天记录。").arg(currentChatFriend),
         QMessageBox::Yes | QMessageBox::No);
     
     if (reply == QMessageBox::Yes) {
@@ -243,6 +255,15 @@ void MainWindow::requestFriendList()
     TcpClient::instance().sendMessage(msg);
 }
 
+// 请求待处理的好友请求
+void MainWindow::requestPendingFriendRequests()
+{
+    Message msg(MessageType::REQ_PENDING_REQUESTS);
+    msg.setSequence(1);
+    msg.setJsonBody(QJsonObject());
+    TcpClient::instance().sendMessage(msg);
+}
+
 // 请求聊天历史
 void MainWindow::requestChatHistory(const QString &friendUsername)
 {
@@ -268,6 +289,14 @@ void MainWindow::handleFriendListResponse(const QJsonObject &body)
         return;
     }
     
+    // 检查是否有requests字段（待处理的好友请求）
+    if (body.contains("requests")) {
+        QJsonArray requests = body["requests"].toArray();
+        showPendingRequestsDialog(requests);
+        return;
+    }
+    
+    // 否则是好友列表
     QJsonArray friends = body["friends"].toArray();
     updateFriendList(friends);
 }
@@ -280,6 +309,7 @@ void MainWindow::handleAddFriendResponse(const QJsonObject &body)
     
     if (success) {
         QMessageBox::information(this, QString::fromUtf8("成功"), message);
+        requestFriendList(); // 刷新好友列表
     } else {
         QMessageBox::warning(this, QString::fromUtf8("失败"), message);
     }
@@ -353,8 +383,14 @@ void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
     
     if (success) {
         QMessageBox::information(this, QString::fromUtf8("成功"), message);
+        
+        // 清空聊天窗口
         currentChatFriend.clear();
         ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
+        ui->messageBrowser->clear();
+        ui->sendBtn->setEnabled(false);
+        ui->messageInput->setEnabled(false);
+        
         requestFriendList(); // 刷新好友列表
     } else {
         QMessageBox::warning(this, QString::fromUtf8("失败"), message);
@@ -367,12 +403,14 @@ void MainWindow::handleTextMessageReceived(const QJsonObject &body)
     QString sender = body["sender"].toString();
     QString content = body["content"].toString();
     
-    // 如果当前正在和发送者聊天，直接显示
+    // 如果当前正在和发送者聊天，直接显示（好友发送的在左边）
     if (sender == currentChatFriend) {
         appendMessage(sender, content, false);
     } else {
-        // TODO: 显示未读消息提示
+        // 显示未读消息提示
         qInfo() << "收到消息，但当前聊天对象不是发送者:" << sender;
+        QMessageBox::information(this, QString::fromUtf8("新消息"), 
+            QString::fromUtf8("收到 %1 的消息").arg(sender));
     }
 }
 
@@ -425,15 +463,13 @@ void MainWindow::updateFriendList(const QJsonArray &friends)
         item->setData(Qt::UserRole, username);
         item->setData(Qt::UserRole + 1, status == 1 ? "在线" : "离线");
         
+        // 使用纯文本显示，避免HTML标签显示问题
         QString displayName = nickname.isEmpty() ? username : nickname;
-        QString displayText = QString("<b>%1</b> <span style='color:%2;'>● %3</span>")
-            .arg(displayName)
-            .arg(status == 1 ? "#4CAF50" : "#999")
-            .arg(status == 1 ? "在线" : "离线");
-        
-        item->setText(displayText);
+        QString statusText = status == 1 ? "在线" : "离线";
+        item->setText(QString("%1 - %2").arg(displayName, statusText));
         item->setSizeHint(QSize(0, 60));
         
+        // 创建头像
         QPixmap avatar(40, 40);
         avatar.fill(QColor(100, 149, 237));
         QPainter painter(&avatar);
@@ -470,49 +506,153 @@ void MainWindow::showAddFriendDialog()
 // 显示好友请求对话框
 void MainWindow::showFriendRequestsDialog()
 {
-    // TODO: 实现好友请求列表对话框
-    QMessageBox::information(this, QString::fromUtf8("好友请求"), 
-        QString::fromUtf8("好友请求功能待实现"));
+    // 请求待处理的好友请求
+    requestPendingFriendRequests();
+}
+
+// 显示待处理的好友请求列表
+void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString::fromUtf8("好友请求"));
+    dialog.setMinimumSize(400, 300);
+    
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+    
+    QLabel *titleLabel = new QLabel(QString::fromUtf8("待处理的好友请求 (%1)").arg(requests.size()));
+    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;");
+    mainLayout->addWidget(titleLabel);
+    
+    QListWidget *requestList = new QListWidget();
+    requestList->setIconSize(QSize(40, 40));
+    
+    if (requests.isEmpty()) {
+        QLabel *emptyLabel = new QLabel(QString::fromUtf8("暂无待处理的好友请求"));
+        emptyLabel->setAlignment(Qt::AlignCenter);
+        emptyLabel->setStyleSheet("color: #999; padding: 20px;");
+        mainLayout->addWidget(emptyLabel);
+    } else {
+        for (const QJsonValue &value : requests) {
+            QJsonObject request = value.toObject();
+            QString username = request["username"].toString();
+            QString nickname = request["nickname"].toString();
+            QString displayName = nickname.isEmpty() ? username : nickname;
+            
+            QListWidgetItem *item = new QListWidgetItem(requestList);
+            item->setData(Qt::UserRole, username);
+            
+            // 使用纯文本显示
+            item->setText(QString("%1 (%2)").arg(displayName, username));
+            item->setSizeHint(QSize(0, 50));
+            
+            QPixmap avatar(40, 40);
+            avatar.fill(QColor(255, 152, 0));
+            QPainter painter(&avatar);
+            painter.setPen(Qt::white);
+            painter.setFont(QFont("Arial", 16, QFont::Bold));
+            painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
+            item->setIcon(QIcon(avatar));
+        }
+        
+        mainLayout->addWidget(requestList);
+        
+        // 按钮布局
+        QHBoxLayout *buttonLayout = new QHBoxLayout();
+        
+        QPushButton *acceptBtn = new QPushButton(QString::fromUtf8("接受"));
+        acceptBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; } QPushButton:hover { background-color: #45a049; }");
+        
+        QPushButton *rejectBtn = new QPushButton(QString::fromUtf8("拒绝"));
+        rejectBtn->setStyleSheet("QPushButton { background-color: #f44336; color: white; padding: 8px 16px; border: none; border-radius: 4px; } QPushButton:hover { background-color: #d32f2f; }");
+        
+        QPushButton *closeBtn = new QPushButton(QString::fromUtf8("关闭"));
+        closeBtn->setStyleSheet("QPushButton { background-color: #9E9E9E; color: white; padding: 8px 16px; border: none; border-radius: 4px; } QPushButton:hover { background-color: #757575; }");
+        
+        buttonLayout->addWidget(acceptBtn);
+        buttonLayout->addWidget(rejectBtn);
+        buttonLayout->addStretch();
+        buttonLayout->addWidget(closeBtn);
+        
+        mainLayout->addLayout(buttonLayout);
+        
+        // 连接按钮信号
+        connect(acceptBtn, &QPushButton::clicked, [&]() {
+            QListWidgetItem *currentItem = requestList->currentItem();
+            if (!currentItem) {
+                QMessageBox::warning(&dialog, QString::fromUtf8("提示"), QString::fromUtf8("请先选择一个好友请求"));
+                return;
+            }
+            
+            QString username = currentItem->data(Qt::UserRole).toString();
+            
+            Message msg(MessageType::REQ_ACCEPT_FRIEND);
+            msg.setSequence(1);
+            
+            QJsonObject body;
+            body["username"] = username;
+            msg.setJsonBody(body);
+            
+            TcpClient::instance().sendMessage(msg);
+            
+            // 从列表中移除
+            delete requestList->takeItem(requestList->row(currentItem));
+        });
+        
+        connect(rejectBtn, &QPushButton::clicked, [&]() {
+            QListWidgetItem *currentItem = requestList->currentItem();
+            if (!currentItem) {
+                QMessageBox::warning(&dialog, QString::fromUtf8("提示"), QString::fromUtf8("请先选择一个好友请求"));
+                return;
+            }
+            
+            QString username = currentItem->data(Qt::UserRole).toString();
+            
+            Message msg(MessageType::REQ_REJECT_FRIEND);
+            msg.setSequence(1);
+            
+            QJsonObject body;
+            body["username"] = username;
+            msg.setJsonBody(body);
+            
+            TcpClient::instance().sendMessage(msg);
+            
+            // 从列表中移除
+            delete requestList->takeItem(requestList->row(currentItem));
+        });
+        
+        connect(closeBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+    }
+    
+    dialog.exec();
 }
 
 // 添加消息到浏览器
 void MainWindow::appendMessage(const QString &nickname, const QString &message, bool isSelf)
 {
     QString time = QTime::currentTime().toString("hh:mm");
-    QString html = createBubbleHtml(message, isSelf, time);
+    
+    // 构建HTML消息
+    QString html;
+    if (isSelf) {
+        // 自己发送的消息 - 右对齐，绿色背景
+        html = QString(
+            "<div style='text-align:right; margin:8px;'>"
+            "<span style='font-size:10px; color:#999;'>%1 </span>"
+            "<span style='background-color:#95EC69; padding:8px 12px; border-radius:10px; display:inline-block; max-width:70%;'>%2</span>"
+            "</div>"
+        ).arg(time, message.toHtmlEscaped().replace("\n", "<br>"));
+    } else {
+        // 好友发送的消息 - 左对齐，白色背景
+        html = QString(
+            "<div style='text-align:left; margin:8px;'>"
+            "<span style='background-color:#FFFFFF; padding:8px 12px; border-radius:10px; display:inline-block; max-width:70%;'>%1</span>"
+            "<span style='font-size:10px; color:#999;'> %2</span>"
+            "</div>"
+        ).arg(message.toHtmlEscaped().replace("\n", "<br>"), time);
+    }
+    
     ui->messageBrowser->append(html);
     
     ui->messageBrowser->verticalScrollBar()->setValue(
         ui->messageBrowser->verticalScrollBar()->maximum());
-}
-
-// 创建气泡HTML
-QString MainWindow::createBubbleHtml(const QString &message, bool isSelf, const QString &time)
-{
-    QString escapedMessage = message.toHtmlEscaped();
-    escapedMessage.replace("\n", "<br>");
-    
-    if (isSelf) {
-        return QString(
-            "<div style='text-align:right; margin:10px 0;'>"
-            "  <span style='color:#888; font-size:11px;'>%1</span>"
-            "  <div style='display:inline-block; background-color:#95EC69; color:#000; "
-            "       padding:8px 12px; border-radius:8px; max-width:60%; "
-            "       text-align:left; word-wrap:break-word;'>"
-            "    %2"
-            "  </div>"
-            "</div>"
-        ).arg(time, escapedMessage);
-    } else {
-        return QString(
-            "<div style='text-align:left; margin:10px 0;'>"
-            "  <div style='display:inline-block; background-color:#FFFFFF; color:#000; "
-            "       padding:8px 12px; border-radius:8px; max-width:60%; "
-            "       text-align:left; word-wrap:break-word;'>"
-            "    %1"
-            "  </div>"
-            "  <span style='color:#888; font-size:11px;'> %2</span>"
-            "</div>"
-        ).arg(escapedMessage, time);
-    }
 }
