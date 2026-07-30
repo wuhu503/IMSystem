@@ -38,7 +38,7 @@ private:
     QTcpSocket *m_socket;
     qint64 m_userId;
     QString m_token;
-    QByteArray m_buffer;
+    QByteArray m_buffer;  //缓冲区
 };
 
 #endif // CLIENTHANDLER_H

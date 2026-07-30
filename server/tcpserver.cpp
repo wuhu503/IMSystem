@@ -16,7 +16,6 @@ TcpServer::~TcpServer()
 bool TcpServer::startServer(quint16 port)
 {
     // 尝试监听指定端口
-    // QHostAddress::Any 表示监听所有网络接口
     if (!listen(QHostAddress::Any, port)) {
         qCritical() << "服务器启动失败:" << errorString();
         return false;
@@ -47,7 +46,7 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
 {
     qInfo() << "新连接请求, socketDescriptor:" << socketDescriptor;
 
-    // 1. 创建 socket 并设置描述符
+    //创建 socket 并设置描述符
     QTcpSocket *socket = new QTcpSocket(this);
     if (!socket->setSocketDescriptor(socketDescriptor)) {
         qWarning() << "设置 socket 描述符失败";
@@ -55,17 +54,17 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
         return;
     }
 
-    // 2. 创建 ClientHandler
+    //给每一个连接创建ClientHandler
     ClientHandler *handler = new ClientHandler(socket, this);
 
-    // 3. 连接客户端断开信号
+    //连接客户端断开，执行断开槽函数
     connect(handler, &ClientHandler::clientDisconnect,
             this, &TcpServer::onClientDisconnected);
 
-    // 4. 存储到映射
+    //把客户端存储到映射
     m_clients.insert(socketDescriptor, handler);
 
-    // 5. 发送新连接信号
+    //发送新连接信号
     emit newClientConnected(socketDescriptor);
 
     qInfo() << "客户端连接成功, 当前连接数:" << m_clients.size();

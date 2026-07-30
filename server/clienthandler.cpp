@@ -49,6 +49,7 @@ QTcpSocket* ClientHandler::socket() const
     return m_socket;
 }
 
+//发送消息给客户端
 void ClientHandler::sendMessage(const Message &msg)
 {
     if (!m_socket || !m_socket->isOpen()) {
@@ -61,6 +62,7 @@ void ClientHandler::sendMessage(const Message &msg)
     m_socket->flush();
 }
 
+//解析来自客户端的数据
 void ClientHandler::onReadyRead()
 {
     m_buffer.append(m_socket->readAll());
@@ -77,8 +79,10 @@ void ClientHandler::onReadyRead()
         
         QByteArray data = m_buffer.left(totalSize);
         m_buffer.remove(0, totalSize);
-        
+
+        //反序列化
         Message msg = Message::deserialize(data);
+        //处理消息
         handleMessage(msg);
     }
 }
@@ -98,6 +102,7 @@ void ClientHandler::onDisconnected()
     emit clientDisconnect(m_socket->socketDescriptor());
 }
 
+//处理消息，根据消息的类型来分发业务
 void ClientHandler::handleMessage(const Message &msg)
 {
     emit messageReceived(m_userId, msg);
