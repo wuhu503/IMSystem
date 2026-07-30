@@ -107,6 +107,16 @@ void ClientHandler::handleMessage(const Message &msg)
 {
     emit messageReceived(m_userId, msg);
     
+    // ========== 登录/注册请求不需要验证 token ==========
+    if (msg.type() != MessageType::REQ_REGISTER && 
+        msg.type() != MessageType::REQ_LOGIN) {
+        // 其他请求需要验证 token
+        if (!verifyToken(msg)) {
+            sendAuthErrorResponse(msg.type(), msg.sequence(), "认证失败，请重新登录");
+            return;
+        }
+    }
+    
     switch (msg.type()) {
         
     // ========== 认证系统 ==========
@@ -180,4 +190,36 @@ void ClientHandler::handleMessage(const Message &msg)
         qWarning() << "未知消息类型:" << static_cast<int>(msg.type());
         break;
     }
+}
+
+bool ClientHandler::verifyToken(const Message &msg)
+{
+    // 未登录用户
+    if (m_userId == -1) {
+        qWarning() << "未登录用户发送请求";
+        return false;
+    }
+    
+    QJsonObject body = msg.jsonBody();
+    QString token = body["token"].toString();
+    
+    if (token.isEmpty() || token != m_token) {
+        qWarning() << "token 验证失败, userId:" << m_userId 
+                    << " 收到token:" << token << " 期望token:" << m_token;
+        return false;
+    }
+    
+    return true;
+}
+
+void ClientHandler::sendAuthErrorResponse(MessageType type, uint32_t sequence, const QString &reason)
+{
+    QJsonObject body;
+    body["success"] = false;
+    body["message"] = reason;
+    
+    Message response(type);
+    response.setSequence(sequence);
+    response.setJsonBody(body);
+    sendMessage(response);
 }

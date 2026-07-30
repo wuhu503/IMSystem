@@ -53,13 +53,23 @@ void TcpClient::disconnectToServer()
     m_socket->disconnectFromHost();
 }
 
-void TcpClient::sendMessage(const Message &msg)
+void TcpClient::sendMessage(Message &msg)
 {
     if(!isConnect())
     {
         qInfo()<<"未连接上服务器";
         return;
     }
+    
+    // 非登录/注册请求，自动注入 token
+    if (msg.type() != MessageType::REQ_LOGIN && 
+        msg.type() != MessageType::REQ_REGISTER &&
+        !m_token.isEmpty()) {
+        QJsonObject body = msg.jsonBody();
+        body["token"] = m_token;
+        msg.setJsonBody(body);
+    }
+    
     QByteArray data=msg.serialize();
     m_socket->write(data);
     m_socket->flush();

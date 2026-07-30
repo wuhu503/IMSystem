@@ -34,6 +34,8 @@ private slots:
 
 private:
     void handleMessage(const Message &msg);
+    bool verifyToken(const Message &msg);
+    void sendAuthErrorResponse(MessageType type, uint32_t sequence, const QString &reason);
 
     QTcpSocket *m_socket;
     qint64 m_userId;

@@ -15,7 +15,7 @@ public:
 
     void disconnectToServer();
 
-    void sendMessage(const Message &msg);
+    void sendMessage(Message &msg);
 
     bool isConnect() const;
     bool isConnecting() const;  // 是否正在连接中
