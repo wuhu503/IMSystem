@@ -1,10 +1,18 @@
 ﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "tcpclient.h"
+#include "message.h"
+#include "protocol.h"
 #include <QMessageBox>
 #include <QTime>
 #include <QPainter>
 #include <QScrollBar>
 #include <QTimer>
+#include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -14,7 +22,6 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 初始化好友列表
     initFriendList();
-    addTestFriends();
     
     // 连接信号槽
     connect(ui->friendList, &QListWidget::itemClicked, 
@@ -23,6 +30,26 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onSendClicked);
     connect(ui->searchEdit, &QLineEdit::textChanged, 
             this, &MainWindow::onSearchTextChanged);
+    
+    // 好友按钮信号
+    connect(ui->addFriendBtn, &QPushButton::clicked, 
+            this, &MainWindow::onAddFriendClicked);
+    connect(ui->refreshFriendsBtn, &QPushButton::clicked, 
+            this, &MainWindow::onRefreshFriendsClicked);
+    connect(ui->friendRequestsBtn, &QPushButton::clicked, 
+            this, &MainWindow::onFriendRequestsClicked);
+    connect(ui->deleteFriendBtn, &QPushButton::clicked, 
+            this, &MainWindow::onDeleteFriendClicked);
+    
+    // 连接TcpClient信号
+    connect(&TcpClient::instance(), &TcpClient::messageReceived,
+            this, &MainWindow::onMessageReceived);
+    connect(&TcpClient::instance(), &TcpClient::connectionEstablished,
+            this, &MainWindow::onConnectionEstablished);
+    connect(&TcpClient::instance(), &TcpClient::connectionClosed,
+            this, &MainWindow::onConnectionClosed);
+    connect(&TcpClient::instance(), &TcpClient::errorOccurred,
+            this, &MainWindow::onErrorOccurred);
     
     // 初始状态
     ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
@@ -34,65 +61,22 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-// 设置当前登录用户
 void MainWindow::setUsername(const QString &username)
 {
     m_username = username;
     ui->userAccountLabel->setText(QString::fromUtf8("当前用户：%1").arg(username));
     setWindowTitle(QString::fromUtf8("IMSystem - %1").arg(username));
+    
+    // 登录成功后请求好友列表
+    requestFriendList();
 }
 
-// 初始化好友列表
 void MainWindow::initFriendList()
 {
     ui->friendList->setIconSize(QSize(40, 40));
     ui->friendList->setSpacing(2);
 }
 
-// 添加测试好友数据
-void MainWindow::addTestFriends()
-{
-    QStringList friends = {
-        QString::fromUtf8("张三|在线|今天天气不错啊"),
-        QString::fromUtf8("李四|离线|明天见"),
-        QString::fromUtf8("王五|在线|收到，谢谢"),
-        QString::fromUtf8("赵六|离线|好的"),
-        QString::fromUtf8("IMSystem官方|在线|欢迎使用IMSystem")
-    };
-    
-    for (const QString &friendInfo : friends) {
-        QStringList parts = friendInfo.split("|");
-        if (parts.size() >= 3) {
-            QString nickname = parts[0];
-            QString status = parts[1];
-            QString lastMsg = parts[2];
-            
-            QListWidgetItem *item = new QListWidgetItem(ui->friendList);
-            
-            item->setData(Qt::UserRole, nickname);
-            item->setData(Qt::UserRole + 1, status);
-            
-            QString displayText = QString("<b>%1</b> <span style='color:%2;'>● %3</span><br><span style='color:#888; font-size:12px;'>%4</span>")
-                .arg(nickname)
-                .arg(status == QString::fromUtf8("在线") ? "#4CAF50" : "#999")
-                .arg(status)
-                .arg(lastMsg);
-            
-            item->setText(displayText);
-            item->setSizeHint(QSize(0, 60));
-            
-            QPixmap avatar(40, 40);
-            avatar.fill(QColor(100, 149, 237));
-            QPainter painter(&avatar);
-            painter.setPen(Qt::white);
-            painter.setFont(QFont("Arial", 16, QFont::Bold));
-            painter.drawText(avatar.rect(), Qt::AlignCenter, nickname.left(1));
-            item->setIcon(QIcon(avatar));
-        }
-    }
-}
-
-// 好友点击事件
 void MainWindow::onFriendClicked(QListWidgetItem *item)
 {
     if (!item) return;
@@ -101,14 +85,11 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
     QString status = item->data(Qt::UserRole + 1).toString();
     
     currentChatFriend = nickname;
-    
     ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
-    
     ui->messageBrowser->clear();
     appendMessage(nickname, QString::fromUtf8("你好，有什么可以帮你的吗？"), false);
 }
 
-// 发送消息
 void MainWindow::onSendClicked()
 {
     if (currentChatFriend.isEmpty()) {
@@ -122,7 +103,6 @@ void MainWindow::onSendClicked()
     }
     
     appendMessage(m_username, message, true);
-    
     ui->messageInput->clear();
     
     QTimer::singleShot(1000, this, [this, message]() {
@@ -131,16 +111,286 @@ void MainWindow::onSendClicked()
     });
 }
 
-// 搜索好友
 void MainWindow::onSearchTextChanged(const QString &text)
 {
     for (int i = 0; i < ui->friendList->count(); ++i) {
         QListWidgetItem *item = ui->friendList->item(i);
         QString nickname = item->data(Qt::UserRole).toString();
-        
         bool visible = text.isEmpty() || nickname.contains(text, Qt::CaseInsensitive);
         item->setHidden(!visible);
     }
+}
+
+void MainWindow::on_actionExit_triggered()
+{
+    QApplication::quit();
+}
+
+void MainWindow::on_actionAbout_triggered()
+{
+    QMessageBox::about(this, QString::fromUtf8("关于 IMSystem"), 
+        QString::fromUtf8("IMSystem 即时通讯系统 v1.0\n\n"
+        "基于 Qt 6 + C++17 开发\n"
+        "支持好友聊天、群聊等功能"));
+}
+
+// ========== 好友功能 ==========
+
+void MainWindow::onAddFriendClicked()
+{
+    showAddFriendDialog();
+}
+
+void MainWindow::onRefreshFriendsClicked()
+{
+    requestFriendList();
+}
+
+void MainWindow::onFriendRequestsClicked()
+{
+    showFriendRequestsDialog();
+}
+
+void MainWindow::onDeleteFriendClicked()
+{
+    if (currentChatFriend.isEmpty()) {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请先选择要删除的好友"));
+        return;
+    }
+    
+    QMessageBox::StandardButton reply = QMessageBox::question(this, 
+        QString::fromUtf8("确认删除"), 
+        QString::fromUtf8("确定要删除好友 %1 吗？").arg(currentChatFriend),
+        QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply == QMessageBox::Yes) {
+        Message msg(MessageType::REQ_DELETE_FRIEND);
+        msg.setSequence(1);
+        
+        QJsonObject body;
+        body["username"] = currentChatFriend;
+        msg.setJsonBody(body);
+        
+        TcpClient::instance().sendMessage(msg);
+    }
+}
+
+void MainWindow::onMessageReceived(const Message &msg)
+{
+    switch (msg.type()) {
+    case MessageType::RSP_FRIEND_LIST:
+        handleFriendListResponse(msg.jsonBody());
+        break;
+    case MessageType::RSP_ADD_FRIEND:
+        handleAddFriendResponse(msg.jsonBody());
+        break;
+    case MessageType::RSP_SEARCH_USER:
+        handleSearchUserResponse(msg.jsonBody());
+        break;
+    case MessageType::RSP_ACCEPT_FRIEND:
+        handleAcceptFriendResponse(msg.jsonBody());
+        break;
+    case MessageType::RSP_REJECT_FRIEND:
+        handleRejectFriendResponse(msg.jsonBody());
+        break;
+    case MessageType::RSP_DELETE_FRIEND:
+        handleDeleteFriendResponse(msg.jsonBody());
+        break;
+    default:
+        break;
+    }
+}
+
+void MainWindow::onConnectionEstablished()
+{
+    qInfo() << "MainWindow: 连接已建立";
+}
+
+void MainWindow::onConnectionClosed()
+{
+    qInfo() << "MainWindow: 连接已关闭";
+}
+
+void MainWindow::onErrorOccurred(const QString &error)
+{
+    qWarning() << "MainWindow: 连接错误:" << error;
+}
+
+// 请求好友列表
+void MainWindow::requestFriendList()
+{
+    Message msg(MessageType::REQ_FRIEND_LIST);
+    msg.setSequence(1);
+    msg.setJsonBody(QJsonObject());
+    TcpClient::instance().sendMessage(msg);
+}
+
+// 处理好友列表响应
+void MainWindow::handleFriendListResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    if (!success) {
+        QString message = body["message"].toString();
+        qWarning() << "获取好友列表失败:" << message;
+        return;
+    }
+    
+    QJsonArray friends = body["friends"].toArray();
+    updateFriendList(friends);
+}
+
+// 处理添加好友响应
+void MainWindow::handleAddFriendResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    QString message = body["message"].toString();
+    
+    if (success) {
+        QMessageBox::information(this, QString::fromUtf8("成功"), message);
+    } else {
+        QMessageBox::warning(this, QString::fromUtf8("失败"), message);
+    }
+}
+
+// 处理搜索用户响应
+void MainWindow::handleSearchUserResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    if (!success) {
+        QString message = body["message"].toString();
+        QMessageBox::warning(this, QString::fromUtf8("搜索失败"), message);
+        return;
+    }
+    
+    QJsonArray users = body["users"].toArray();
+    if (users.isEmpty()) {
+        QMessageBox::information(this, QString::fromUtf8("搜索结果"), QString::fromUtf8("未找到相关用户"));
+        return;
+    }
+    
+    // 显示搜索结果
+    QString resultText;
+    for (const QJsonValue &value : users) {
+        QJsonObject user = value.toObject();
+        QString username = user["username"].toString();
+        QString nickname = user["nickname"].toString();
+        int status = user["status"].toInt();
+        
+        resultText += QString("%1 (%2) - %3\n")
+            .arg(username)
+            .arg(nickname.isEmpty() ? username : nickname)
+            .arg(status == 1 ? "在线" : "离线");
+    }
+    
+    QMessageBox::information(this, QString::fromUtf8("搜索结果"), resultText);
+}
+
+// 处理接受好友响应
+void MainWindow::handleAcceptFriendResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    QString message = body["message"].toString();
+    
+    if (success) {
+        QMessageBox::information(this, QString::fromUtf8("成功"), message);
+        requestFriendList(); // 刷新好友列表
+    } else {
+        QMessageBox::warning(this, QString::fromUtf8("失败"), message);
+    }
+}
+
+// 处理拒绝好友响应
+void MainWindow::handleRejectFriendResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    QString message = body["message"].toString();
+    
+    if (success) {
+        QMessageBox::information(this, QString::fromUtf8("成功"), message);
+    } else {
+        QMessageBox::warning(this, QString::fromUtf8("失败"), message);
+    }
+}
+
+// 处理删除好友响应
+void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
+{
+    bool success = body["success"].toBool();
+    QString message = body["message"].toString();
+    
+    if (success) {
+        QMessageBox::information(this, QString::fromUtf8("成功"), message);
+        currentChatFriend.clear();
+        ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
+        requestFriendList(); // 刷新好友列表
+    } else {
+        QMessageBox::warning(this, QString::fromUtf8("失败"), message);
+    }
+}
+
+// 更新好友列表
+void MainWindow::updateFriendList(const QJsonArray &friends)
+{
+    ui->friendList->clear();
+    
+    for (const QJsonValue &value : friends) {
+        QJsonObject friendObj = value.toObject();
+        QString username = friendObj["username"].toString();
+        QString nickname = friendObj["nickname"].toString();
+        int status = friendObj["status"].toInt();
+        
+        QListWidgetItem *item = new QListWidgetItem(ui->friendList);
+        item->setData(Qt::UserRole, username);
+        item->setData(Qt::UserRole + 1, status == 1 ? "在线" : "离线");
+        
+        QString displayName = nickname.isEmpty() ? username : nickname;
+        QString displayText = QString("<b>%1</b> <span style='color:%2;'>● %3</span>")
+            .arg(displayName)
+            .arg(status == 1 ? "#4CAF50" : "#999")
+            .arg(status == 1 ? "在线" : "离线");
+        
+        item->setText(displayText);
+        item->setSizeHint(QSize(0, 60));
+        
+        QPixmap avatar(40, 40);
+        avatar.fill(QColor(100, 149, 237));
+        QPainter painter(&avatar);
+        painter.setPen(Qt::white);
+        painter.setFont(QFont("Arial", 16, QFont::Bold));
+        painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
+        item->setIcon(QIcon(avatar));
+    }
+}
+
+// 显示添加好友对话框
+void MainWindow::showAddFriendDialog()
+{
+    bool ok;
+    QString username = QInputDialog::getText(this, 
+        QString::fromUtf8("添加好友"), 
+        QString::fromUtf8("请输入用户名："), 
+        QLineEdit::Normal, 
+        "", 
+        &ok);
+    
+    if (ok && !username.isEmpty()) {
+        Message msg(MessageType::REQ_ADD_FRIEND);
+        msg.setSequence(1);
+        
+        QJsonObject body;
+        body["username"] = username;
+        msg.setJsonBody(body);
+        
+        TcpClient::instance().sendMessage(msg);
+    }
+}
+
+// 显示好友请求对话框
+void MainWindow::showFriendRequestsDialog()
+{
+    // TODO: 实现好友请求列表对话框
+    QMessageBox::information(this, QString::fromUtf8("好友请求"), 
+        QString::fromUtf8("好友请求功能待实现"));
 }
 
 // 添加消息到浏览器
@@ -183,19 +433,4 @@ QString MainWindow::createBubbleHtml(const QString &message, bool isSelf, const 
             "</div>"
         ).arg(escapedMessage, time);
     }
-}
-
-// 退出
-void MainWindow::on_actionExit_triggered()
-{
-    QApplication::quit();
-}
-
-// 关于
-void MainWindow::on_actionAbout_triggered()
-{
-    QMessageBox::about(this, QString::fromUtf8("关于 IMSystem"), 
-        QString::fromUtf8("IMSystem 即时通讯系统 v1.0\n\n"
-        "基于 Qt 6 + C++17 开发\n"
-        "支持好友聊天、群聊等功能"));
 }

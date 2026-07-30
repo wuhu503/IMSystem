@@ -3,6 +3,9 @@
 
 #include <QMainWindow>
 #include <QListWidgetItem>
+#include <QJsonObject>
+#include <QJsonArray>
+#include "message.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,7 +21,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
     
-    void setUsername(const QString &username);  // 设置当前登录用户
+    void setUsername(const QString &username);
 
 private slots:
     void onFriendClicked(QListWidgetItem *item);
@@ -26,16 +29,41 @@ private slots:
     void onSearchTextChanged(const QString &text);
     void on_actionExit_triggered();
     void on_actionAbout_triggered();
+    
+    // 好友相关槽函数
+    void onAddFriendClicked();
+    void onRefreshFriendsClicked();
+    void onFriendRequestsClicked();
+    void onDeleteFriendClicked();
+    
+    // 网络消息处理
+    void onMessageReceived(const Message &msg);
+    void onConnectionEstablished();
+    void onConnectionClosed();
+    void onErrorOccurred(const QString &error);
 
 private:
     void initFriendList();
-    void addTestFriends();
     void appendMessage(const QString &nickname, const QString &message, bool isSelf);
     QString createBubbleHtml(const QString &message, bool isSelf, const QString &time);
+    
+    // 好友功能
+    void requestFriendList();
+    void handleFriendListResponse(const QJsonObject &body);
+    void handleAddFriendResponse(const QJsonObject &body);
+    void handleSearchUserResponse(const QJsonObject &body);
+    void handleAcceptFriendResponse(const QJsonObject &body);
+    void handleRejectFriendResponse(const QJsonObject &body);
+    void handleDeleteFriendResponse(const QJsonObject &body);
+    
+    // UI更新
+    void updateFriendList(const QJsonArray &friends);
+    void showAddFriendDialog();
+    void showFriendRequestsDialog();
 
     Ui::MainWindow *ui;
-    QString currentChatFriend;  // 当前聊天的好友昵称
-    QString m_username;         // 当前登录用户
+    QString currentChatFriend;
+    QString m_username;
 };
 
 #endif // MAINWINDOW_H

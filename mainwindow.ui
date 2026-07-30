@@ -60,6 +60,70 @@
          </widget>
         </item>
         <item>
+         <layout class="QHBoxLayout" name="friendButtonLayout">
+          <item>
+           <widget class="QPushButton" name="addFriendBtn">
+            <property name="text">
+             <string>添加好友</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px;
+    font-size: 12px;
+}
+QPushButton:hover {
+    background-color: #1976D2;
+}</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="friendRequestsBtn">
+            <property name="text">
+             <string>好友请求</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    background-color: #FF9800;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px;
+    font-size: 12px;
+}
+QPushButton:hover {
+    background-color: #F57C00;
+}</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="refreshFriendsBtn">
+            <property name="text">
+             <string>刷新</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    background-color: #9E9E9E;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px;
+    font-size: 12px;
+}
+QPushButton:hover {
+    background-color: #757575;
+}</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
          <widget class="QLineEdit" name="searchEdit">
           <property name="placeholderText">
            <string>搜索好友...</string>
@@ -170,6 +234,41 @@ QListWidget::item:hover {
     border-radius: 5px;
     padding: 8px;
     font-size: 14px;
+}</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="deleteFriendBtn">
+            <property name="text">
+             <string>删除好友</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>80</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>80</width>
+              <height>100</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #d32f2f;
+}
+QPushButton:pressed {
+    background-color: #b71c1c;
 }</string>
             </property>
            </widget>
