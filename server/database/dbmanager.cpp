@@ -132,7 +132,7 @@ bool DbManager::insertUser(const QString &username, const QString &passwordHash,
                            const QString &salt)
 {
     QMutexLocker locker(&m_mutex);
-    if (isUsernameExists(username)) {
+    if (isUsernameExistsInternal(username)) {
         qWarning() << "用户名已存在:" << username;
         return false;
     }
@@ -220,6 +220,12 @@ QVariantMap DbManager::getUserInfo(qint64 userId)
 bool DbManager::isUsernameExists(const QString &username)
 {
     QMutexLocker locker(&m_mutex);
+    return isUsernameExistsInternal(username);
+}
+
+bool DbManager::isUsernameExistsInternal(const QString &username)
+{
+    // 无锁版本，供 insertUser 等已持锁方法调用，避免死锁
     QSqlQuery query;
     query.prepare("SELECT COUNT(*) FROM users WHERE username = ?");
     query.addBindValue(username);
@@ -1070,4 +1076,5 @@ void DbManager::updateUserStatusAsync(qint64 userId, int status,
         }
     );
 }
+
 

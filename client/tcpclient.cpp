@@ -38,7 +38,8 @@ void TcpClient::connectToServer(const QString& host,quint16 port)
 
     if(m_socket->state()!= QAbstractSocket::UnconnectedState)
     {
-        m_socket->disconnect();
+        // abort() 关闭连接但保留信号连接，disconnect() 会断开所有信号
+        m_socket->abort();
     }
     m_socket->connectToHost(host,port);
 }
@@ -150,3 +151,4 @@ void TcpClient::onErrorOccurred(QAbstractSocket::SocketError error)
     qDebug() << "连接出错：" << m_socket->errorString();
     emit errorOccurred(m_socket->errorString());
 }
+

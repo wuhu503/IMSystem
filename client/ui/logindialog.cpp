@@ -80,10 +80,21 @@ void LoginDialog::on_loginBtn_clicked()
 
 void LoginDialog::on_registerBtn_clicked()
 {
+    // 断开 TcpClient 信号，避免两个对话框同时响应
+    disconnect(&TcpClient::instance(), nullptr, this, nullptr);
+    
     RegisterDialog registerDialog(this);
     connect(&registerDialog, &RegisterDialog::registerSuccess,
             this, &LoginDialog::onRegisterSuccess);
     registerDialog.exec();
+    
+    // 注册对话框关闭后，重新连接 TcpClient 信号
+    connect(&TcpClient::instance(), &TcpClient::connectionEstablished,
+            this, &LoginDialog::onConnectionEstablished);
+    connect(&TcpClient::instance(), &TcpClient::messageReceived,
+            this, &LoginDialog::onMessageReceived);
+    connect(&TcpClient::instance(), &TcpClient::errorOccurred,
+            this, &LoginDialog::onErrorOccurred);
 }
 
 void LoginDialog::onConnectionEstablished()
@@ -150,3 +161,4 @@ void LoginDialog::onRegisterSuccess(const QString &username)
     ui->usernameEdit->setText(username);
     ui->passwordEdit->setFocus();
 }
+

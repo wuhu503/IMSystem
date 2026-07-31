@@ -123,6 +123,7 @@ private:
     ~DbManager();
     
     bool createTables();
+    bool isUsernameExistsInternal(const QString &username);  // 无锁版本，供已持锁方法调用
     
     QSqlDatabase m_db;
     bool m_initialized;
@@ -130,5 +131,6 @@ private:
 };
 
 #endif // DBMANAGER_H
+
 
 

@@ -20,6 +20,8 @@ RegisterDialog::RegisterDialog(QWidget *parent) :
 
 RegisterDialog::~RegisterDialog()
 {
+    // 断开 TcpClient 信号，防止悬空连接
+    disconnect(&TcpClient::instance(), nullptr, this, nullptr);
     delete ui;
 }
 
@@ -136,3 +138,4 @@ void RegisterDialog::handleRegisterResponse(const QJsonObject &body)
         QMessageBox::warning(this, QString::fromUtf8("注册失败"), message);
     }
 }
+
