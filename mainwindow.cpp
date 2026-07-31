@@ -104,7 +104,7 @@ void MainWindow::onSendClicked()
     if (message.isEmpty()) return;
     
     Message msg(MessageType::MSG_TEXT);
-    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    msg.setSequence(m_sequenceCounter.fetch_add(1));
     
     QJsonObject body;
     body["receiver"] = currentChatFriend;
@@ -153,7 +153,7 @@ void MainWindow::onDeleteFriendClicked()
     
     if (reply == QMessageBox::Yes) {
         Message msg(MessageType::REQ_DELETE_FRIEND);
-        msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+        msg.setSequence(m_sequenceCounter.fetch_add(1));
         QJsonObject body;
         body["username"] = currentChatFriend;
         msg.setJsonBody(body);
@@ -217,7 +217,7 @@ void MainWindow::onErrorOccurred(const QString &error) { qWarning() << "连接�
 void MainWindow::requestFriendList()
 {
     Message msg(MessageType::REQ_FRIEND_LIST);
-    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    msg.setSequence(m_sequenceCounter.fetch_add(1));
     msg.setJsonBody(QJsonObject());
     TcpClient::instance().sendMessage(msg);
 }
@@ -225,7 +225,7 @@ void MainWindow::requestFriendList()
 void MainWindow::requestPendingFriendRequests()
 {
     Message msg(MessageType::REQ_PENDING_REQUESTS);
-    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    msg.setSequence(m_sequenceCounter.fetch_add(1));
     msg.setJsonBody(QJsonObject());
     TcpClient::instance().sendMessage(msg);
 }
@@ -233,7 +233,7 @@ void MainWindow::requestPendingFriendRequests()
 void MainWindow::requestChatHistory(const QString &friendUsername)
 {
     Message msg(MessageType::MSG_HISTORY);
-    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    msg.setSequence(m_sequenceCounter.fetch_add(1));
     QJsonObject body;
     body["username"] = friendUsername;
     body["limit"] = 50;
@@ -406,7 +406,7 @@ void MainWindow::showAddFriendDialog()
     
     if (ok && !username.isEmpty()) {
         Message msg(MessageType::REQ_ADD_FRIEND);
-        msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+        msg.setSequence(m_sequenceCounter.fetch_add(1));
         QJsonObject body;
         body["username"] = username;
         msg.setJsonBody(body);
@@ -484,7 +484,7 @@ void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
             }
             QString username = currentItem->data(Qt::UserRole).toString();
             Message msg(MessageType::REQ_ACCEPT_FRIEND);
-            msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+            msg.setSequence(m_sequenceCounter.fetch_add(1));
             QJsonObject body;
             body["username"] = username;
             msg.setJsonBody(body);
@@ -500,7 +500,7 @@ void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
             }
             QString username = currentItem->data(Qt::UserRole).toString();
             Message msg(MessageType::REQ_REJECT_FRIEND);
-            msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+            msg.setSequence(m_sequenceCounter.fetch_add(1));
             QJsonObject body;
             body["username"] = username;
             msg.setJsonBody(body);
@@ -540,3 +540,4 @@ void MainWindow::appendMessage(const QString &nickname, const QString &message, 
     ui->messageBrowser->verticalScrollBar()->setValue(
         ui->messageBrowser->verticalScrollBar()->maximum());
 }
+

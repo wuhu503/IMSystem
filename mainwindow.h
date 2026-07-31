@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <atomic>
 #include "message.h"
 
 QT_BEGIN_NAMESPACE
@@ -64,6 +65,8 @@ private:
     Ui::MainWindow *ui;
     QString currentChatFriend;
     QString m_username;
+    std::atomic<uint32_t> m_sequenceCounter{1};  // 消息序列号计数器
 };
 
 #endif // MAINWINDOW_H
+

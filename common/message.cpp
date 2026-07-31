@@ -51,7 +51,7 @@ QByteArray Message::body() const
 
 QByteArray Message::serialize() const
 {
-    const_cast<Message*>(this)->m_header.bodyLength = static_cast<uint32_t>(m_body.size());
+    // bodyLength 已在 setBody()/setJsonBody() 中维护，无需 const_cast
     int totalSize = HEADER_SIZE + m_body.size();
     QByteArray data(totalSize, '\0');
 
@@ -121,3 +121,5 @@ QJsonObject Message::jsonBody() const
     
     return doc.object();
 }
+
+

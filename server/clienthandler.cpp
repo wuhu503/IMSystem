@@ -89,10 +89,18 @@ void ClientHandler::onReadyRead()
 
 void ClientHandler::onDisconnected()
 {
-    // 用户下线
+    // 用户下线（检查是否仍在在线列表，避免踢人时重复移除）
     if (m_userId != -1) {
-        UserManager::instance().userOffline(m_userId);
-        DbManager::instance().updateUserStatus(m_userId, 0);
+        if (UserManager::instance().isOnline(m_userId)) {
+            UserManager::instance().userOffline(m_userId);
+            // 异步更新数据库状态，避免阻塞主线程
+            DbManager::instance().updateUserStatusAsync(m_userId, 0,
+                [userId = m_userId](bool success) {
+                    if (success) {
+                        qInfo() << "用户离线状态已更新, userId:" << userId;
+                    }
+                }, this);
+        }
         qInfo() << "用户离线, userId:" << m_userId;
     }
     
@@ -223,3 +231,5 @@ void ClientHandler::sendAuthErrorResponse(MessageType type, uint32_t sequence, c
     response.setJsonBody(body);
     sendMessage(response);
 }
+
+

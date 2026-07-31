@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QPointer>
 
 class ClientHandler;
 class Message;
@@ -16,11 +17,9 @@ class FriendService : public QObject
 public:
     static FriendService& instance();
     
-    // 禁止拷贝和赋值
     FriendService(const FriendService&) = delete;
     FriendService& operator=(const FriendService&) = delete;
 
-    // 处理好友请求
     void handleAddFriend(ClientHandler *client, const Message &msg);
     void handleFriendList(ClientHandler *client, const Message &msg);
     void handleAcceptFriend(ClientHandler *client, const Message &msg);
@@ -29,14 +28,20 @@ public:
     void handleSearchUser(ClientHandler *client, const Message &msg);
     void handlePendingRequests(ClientHandler *client, const Message &msg);
 
-    // 广播好友状态变化
     void broadcastFriendStatus(qint64 userId, int status);
 
 private:
     FriendService();
     ~FriendService();
     
-    // 辅助方法
+    // 添加好友的异步检查链
+    void checkFriendshipAndAdd(qint64 userId, qint64 friendId,
+                               const QString &friendUsername, uint32_t sequence,
+                               QPointer<ClientHandler> safeClient);
+    void checkPendingAndAdd(qint64 userId, qint64 friendId,
+                            const QString &friendUsername, uint32_t sequence,
+                            QPointer<ClientHandler> safeClient);
+    
     Message createResponse(MessageType type, uint32_t sequence, 
                            const QJsonObject &body);
     void sendErrorResponse(ClientHandler *client, MessageType type, 

@@ -38,6 +38,8 @@ qt_add_executable(IMServer
     server/service/friendservice.cpp
     server/service/chatservice.h
     server/service/chatservice.cpp
+    server/threading/taskrunner.h
+    server/threading/dbconnectionhelper.h
 )
 
 target_link_libraries(IMServer PRIVATE common Qt::Core Qt::Network Qt::Sql)
@@ -46,6 +48,7 @@ target_include_directories(IMServer PRIVATE
     ${CMAKE_SOURCE_DIR}/server
     ${CMAKE_SOURCE_DIR}/server/database
     ${CMAKE_SOURCE_DIR}/server/service
+    ${CMAKE_SOURCE_DIR}/server/threading
 )
 
 add_custom_command(TARGET IMServer POST_BUILD

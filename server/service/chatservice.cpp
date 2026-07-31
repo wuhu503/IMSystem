@@ -6,6 +6,7 @@
 #include "utils.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPointer>
 
 ChatService& ChatService::instance()
 {
@@ -44,35 +45,56 @@ void ChatService::handleTextMessage(ClientHandler *client, const Message &msg)
         return;
     }
     
-    qint64 receiverId = DbManager::instance().getUserId(receiverUsername);
-    if (receiverId == -1) {
-        sendErrorResponse(client, MessageType::MSG_ACK, 
-                         msg.sequence(), "接收者不存在");
-        return;
-    }
+    // 在主线程同步获取发送者用户名（仅一次，后续传递给异步链）
+    QVariantMap senderInfo = DbManager::instance().getUserInfo(senderId);
+    QString senderUsername = senderInfo["username"].toString();
     
-    if (!DbManager::instance().isFriend(senderId, receiverId)) {
-        sendErrorResponse(client, MessageType::MSG_ACK, 
-                         msg.sequence(), "对方不是您的好友，无法发送消息");
-        return;
-    }
+    uint32_t sequence = msg.sequence();
+    QPointer<ClientHandler> safeClient(client);
     
-    QString msgId = Utils::generateUUID();
-    
-    if (!DbManager::instance().saveMessage(msgId, senderId, receiverId, 
-                                            static_cast<int>(MessageType::MSG_TEXT), 
-                                            content)) {
-        sendErrorResponse(client, MessageType::MSG_ACK, 
-                         msg.sequence(), "消息保存失败");
-        return;
-    }
-    
-    QJsonObject ackData;
-    ackData["msg_id"] = msgId;
-    ackData["success"] = true;
-    sendSuccessResponse(client, MessageType::MSG_ACK, msg.sequence(), ackData);
-    
-    forwardMessage(senderId, receiverId, msg);
+    DbManager::instance().getUserIdAsync(receiverUsername,
+        [this, safeClient, senderId, senderUsername, content, sequence, msg](qint64 receiverId) {
+            if (!safeClient) return;
+            
+            if (receiverId == -1) {
+                sendErrorResponse(safeClient.data(), MessageType::MSG_ACK, 
+                                 sequence, "接收者不存在");
+                return;
+            }
+            
+            DbManager::instance().isFriendAsync(senderId, receiverId,
+                [this, safeClient, senderId, senderUsername, receiverId, content, sequence, msg](bool isFriend) {
+                    if (!safeClient) return;
+                    
+                    if (!isFriend) {
+                        sendErrorResponse(safeClient.data(), MessageType::MSG_ACK, 
+                                         sequence, "对方不是您的好友，无法发送消息");
+                        return;
+                    }
+                    
+                    QString msgId = Utils::generateUUID();
+                    
+                    DbManager::instance().saveMessageAsync(
+                        msgId, senderId, receiverId,
+                        static_cast<int>(MessageType::MSG_TEXT), content,
+                        [this, safeClient, senderId, senderUsername, receiverId, sequence, msgId, msg](bool success) {
+                            if (!safeClient) return;
+                            
+                            if (success) {
+                                QJsonObject ackData;
+                                ackData["msg_id"] = msgId;
+                                ackData["success"] = true;
+                                sendSuccessResponse(safeClient.data(), MessageType::MSG_ACK, sequence, ackData);
+                                
+                                // 使用已获取的 senderUsername，不再查询数据库
+                                forwardMessage(senderId, senderUsername, receiverId, msg);
+                            } else {
+                                sendErrorResponse(safeClient.data(), MessageType::MSG_ACK, 
+                                                 sequence, "消息保存失败");
+                            }
+                        }, safeClient.data());
+                }, safeClient.data());
+        }, safeClient.data());
 }
 
 void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg)
@@ -84,6 +106,11 @@ void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg
     int limit = body["limit"].toInt(50);
     int offset = body["offset"].toInt(0);
     
+    // 校验 limit 和 offset
+    if (limit <= 0) limit = 1;
+    if (limit > 100) limit = 100;
+    if (offset < 0) offset = 0;
+    
     qint64 userId = client->userId();
     if (userId == -1) {
         sendErrorResponse(client, MessageType::MSG_HISTORY, 
@@ -91,21 +118,31 @@ void ChatService::handleHistoryRequest(ClientHandler *client, const Message &msg
         return;
     }
     
-    qint64 friendId = DbManager::instance().getUserId(friendUsername);
-    if (friendId == -1) {
-        sendErrorResponse(client, MessageType::MSG_HISTORY, 
-                         msg.sequence(), "用户不存在");
-        return;
-    }
+    uint32_t sequence = msg.sequence();
+    QPointer<ClientHandler> safeClient(client);
     
-    QJsonArray messages = DbManager::instance().getChatHistory(userId, friendId, limit, offset);
-    
-    QJsonObject data;
-    data["messages"] = messages;
-    data["count"] = messages.size();
-    data["friend_username"] = friendUsername;
-    
-    sendSuccessResponse(client, MessageType::MSG_HISTORY, msg.sequence(), data);
+    DbManager::instance().getUserIdAsync(friendUsername,
+        [this, safeClient, userId, friendUsername, limit, offset, sequence](qint64 friendId) {
+            if (!safeClient) return;
+            
+            if (friendId == -1) {
+                sendErrorResponse(safeClient.data(), MessageType::MSG_HISTORY, 
+                                 sequence, "用户不存在");
+                return;
+            }
+            
+            DbManager::instance().getChatHistoryAsync(userId, friendId, limit, offset,
+                [this, safeClient, friendUsername, sequence](QJsonArray messages) {
+                    if (!safeClient) return;
+                    
+                    QJsonObject data;
+                    data["messages"] = messages;
+                    data["count"] = messages.size();
+                    data["friend_username"] = friendUsername;
+                    
+                    sendSuccessResponse(safeClient.data(), MessageType::MSG_HISTORY, sequence, data);
+                }, safeClient.data());
+        }, safeClient.data());
 }
 
 void ChatService::handleMessageAck(ClientHandler *client, const Message &msg)
@@ -115,17 +152,12 @@ void ChatService::handleMessageAck(ClientHandler *client, const Message &msg)
     qInfo() << "收到消息确认";
 }
 
-// 核心：消息转发
-void ChatService::forwardMessage(qint64 senderId, qint64 receiverId, const Message &msg)
+void ChatService::forwardMessage(qint64 senderId, const QString &senderUsername, 
+                                  qint64 receiverId, const Message &msg)
 {
     ClientHandler *receiverHandler = UserManager::instance().getHandler(receiverId);
     
     if (receiverHandler) {
-        // 获取发送者用户名
-        QVariantMap senderInfo = DbManager::instance().getUserInfo(senderId);
-        QString senderUsername = senderInfo["username"].toString();
-        
-        // 构造转发消息
         QJsonObject body = msg.jsonBody();
         body["sender"] = senderUsername;
         

@@ -94,7 +94,7 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
     if (client->userId() != -1) {
         qInfo() << "当前连接已登录用户" << client->userId() << "，先下线";
         UserManager::instance().userOffline(client->userId());
-        DbManager::instance().updateUserStatus(client->userId(), 0);
+        DbManager::instance().updateUserStatusAsync(client->userId(), 0, nullptr, client);
     }
     
     qint64 userId = DbManager::instance().getUserId(username);
@@ -145,7 +145,7 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
     UserManager::instance().userOnline(userId, client);
     
     // 更新在线状态
-    DbManager::instance().updateUserStatus(userId, 1);
+    DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
     
     QJsonObject responseBody;
     responseBody["success"] = true;
@@ -181,3 +181,4 @@ void AuthService::sendErrorResponse(ClientHandler *client, MessageType type,
     
     qWarning() << "认证失败:" << errorMessage;
 }
+
