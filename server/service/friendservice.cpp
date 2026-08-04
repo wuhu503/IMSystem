@@ -97,22 +97,34 @@ void FriendService::checkPendingAndAdd(qint64 userId, qint64 friendId,
                                  sequence, "已发送过好友请求，请等待对方处理");
                 return;
             }
-            
-            // 第四步：添加好友请求
-            DbManager::instance().addFriendRequestAsync(userId, friendId,
-                [this, safeClient, friendUsername, sequence](bool success) {
+
+            // 反向检查：对方是否已向自己发出申请，避免双向重复待处理行
+            DbManager::instance().hasPendingFriendRequestAsync(friendId, userId,
+                [this, safeClient, userId, friendId, friendUsername, sequence](bool reversePending) {
                     if (!safeClient) return;
-                    
-                    if (success) {
-                        QJsonObject data;
-                        data["friend_username"] = friendUsername;
-                        data["message"] = "好友请求已发送";
-                        sendSuccessResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND, sequence, data);
-                        qInfo() << "好友请求已发送";
-                    } else {
-                        sendErrorResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND, 
-                                         sequence, "添加好友失败，请稍后重试");
+
+                    if (reversePending) {
+                        sendErrorResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND,
+                                         sequence, "对方已向您发送好友请求，请在好友请求列表中处理");
+                        return;
                     }
+
+                    // 第四步：添加好友请求
+                    DbManager::instance().addFriendRequestAsync(userId, friendId,
+                        [this, safeClient, friendUsername, sequence](bool success) {
+                            if (!safeClient) return;
+
+                            if (success) {
+                                QJsonObject data;
+                                data["friend_username"] = friendUsername;
+                                data["message"] = "好友请求已发送";
+                                sendSuccessResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND, sequence, data);
+                                qInfo() << "好友请求已发送";
+                            } else {
+                                sendErrorResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND,
+                                                 sequence, "添加好友失败，请稍后重试");
+                            }
+                        }, safeClient.data());
                 }, safeClient.data());
         }, safeClient.data());
 }

@@ -154,6 +154,27 @@ void ClientHandler::handleMessage(const Message &msg)
         qInfo() << "收到登录请求";
         AuthService::instance().handleLogin(this, msg);
         break;
+
+    case MessageType::REQ_LOGOUT:
+        qInfo() << "收到退出登录请求";
+        if (m_userId != -1) {
+            if (UserManager::instance().isOnline(m_userId)) {
+                UserManager::instance().userOffline(m_userId);
+            }
+            DbManager::instance().updateUserStatusAsync(m_userId, 0, nullptr, this);
+            qInfo() << "用户退出登录, userId:" << m_userId;
+        }
+        {
+            QJsonObject body;
+            body["success"] = true;
+            body["message"] = "退出成功";
+            Message response(MessageType::RSP_LOGOUT);
+            response.setSequence(msg.sequence());
+            response.setJsonBody(body);
+            sendMessage(response);
+        }
+        m_socket->disconnectFromHost();
+        break;
         
     // ========== 好友系统 ==========
     case MessageType::REQ_ADD_FRIEND:

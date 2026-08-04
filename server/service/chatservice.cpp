@@ -155,11 +155,14 @@ void ChatService::handleMessageAck(ClientHandler *client, const Message &msg)
 void ChatService::forwardMessage(qint64 senderId, const QString &senderUsername, 
                                   qint64 receiverId, const Message &msg)
 {
-    ClientHandler *receiverHandler = UserManager::instance().getHandler(receiverId);
-    
-    if (receiverHandler) {
-        QJsonObject body = msg.jsonBody();
+    QPointer<ClientHandler> receiverHandler = UserManager::instance().getHandler(receiverId);
+
+    if (!receiverHandler.isNull()) {
+        // 重建转发 body：只保留 sender/content，
+        // 避免把发送者的 token、receiver 等内部字段泄露给接收方
+        QJsonObject body;
         body["sender"] = senderUsername;
+        body["content"] = msg.jsonBody()["content"].toString();
         
         Message forwardMsg(MessageType::MSG_TEXT);
         forwardMsg.setJsonBody(body);

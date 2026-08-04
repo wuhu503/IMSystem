@@ -949,13 +949,12 @@ void DbManager::addFriendRequestAsync(qint64 userId, qint64 friendId,
             QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
             QSqlQuery query(db);
             query.prepare(
-                "INSERT INTO friendships (user_id, friend_id, status, created_at, updated_at) "
-                "VALUES (?, ?, 0, ?, ?)"
+                "INSERT INTO friendships (user_id, friend_id, status, created_at) "
+                "VALUES (?, ?, 0, ?)"
             );
             qint64 now = QDateTime::currentSecsSinceEpoch();
             query.addBindValue(userId);
             query.addBindValue(friendId);
-            query.addBindValue(now);
             query.addBindValue(now);
             
             bool success = query.exec();
@@ -977,18 +976,40 @@ void DbManager::acceptFriendRequestAsync(qint64 userId, qint64 friendId,
         receiver,
         [userId, friendId]() -> QVariant {
             QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
-            QSqlQuery query(db);
-            query.prepare(
-                "UPDATE friendships SET status = 1, updated_at = ? "
-                "WHERE user_id = ? AND friend_id = ? AND status = 0"
-            );
-            query.addBindValue(QDateTime::currentSecsSinceEpoch());
-            query.addBindValue(userId);
-            query.addBindValue(friendId);
-            
-            bool success = query.exec() && query.numRowsAffected() > 0;
+            bool success = false;
+
+            if (db.transaction()) {
+                QSqlQuery query(db);
+                query.prepare(
+                    "UPDATE friendships SET status = 1 "
+                    "WHERE user_id = ? AND friend_id = ? AND status = 0"
+                );
+                query.addBindValue(userId);
+                query.addBindValue(friendId);
+                success = query.exec() && query.numRowsAffected() > 0;
+
+                // 补写反向好友关系，与同步版行为保持一致
+                if (success) {
+                    QSqlQuery insertQuery(db);
+                    insertQuery.prepare(
+                        "INSERT OR IGNORE INTO friendships (user_id, friend_id, status, created_at) "
+                        "VALUES (?, ?, 1, ?)"
+                    );
+                    insertQuery.addBindValue(friendId);
+                    insertQuery.addBindValue(userId);
+                    insertQuery.addBindValue(QDateTime::currentSecsSinceEpoch());
+                    success = insertQuery.exec();
+                }
+
+                if (success) {
+                    db.commit();
+                } else {
+                    db.rollback();
+                }
+            }
+
             if (!success) {
-                qCritical() << "[Async] 接受好友请求失败:" << query.lastError().text();
+                qCritical() << "[Async] 接受好友请求失败";
             }
             return QVariant(success);
         },
@@ -1032,19 +1053,43 @@ void DbManager::deleteFriendAsync(qint64 userId, qint64 friendId,
         receiver,
         [userId, friendId]() -> QVariant {
             QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
-            QSqlQuery query(db);
-            query.prepare(
-                "DELETE FROM friendships "
-                "WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)"
-            );
-            query.addBindValue(userId);
-            query.addBindValue(friendId);
-            query.addBindValue(friendId);
-            query.addBindValue(userId);
-            
-            bool success = query.exec() && query.numRowsAffected() > 0;
+            bool success = false;
+
+            if (db.transaction()) {
+                QSqlQuery query(db);
+                query.prepare(
+                    "DELETE FROM friendships "
+                    "WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)"
+                );
+                query.addBindValue(userId);
+                query.addBindValue(friendId);
+                query.addBindValue(friendId);
+                query.addBindValue(userId);
+                success = query.exec();
+
+                // 与同步版一致：同时删除双方聊天记录（幂等删除，0 行也视为成功）
+                if (success) {
+                    QSqlQuery deleteMsgQuery(db);
+                    deleteMsgQuery.prepare(
+                        "DELETE FROM messages "
+                        "WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)"
+                    );
+                    deleteMsgQuery.addBindValue(userId);
+                    deleteMsgQuery.addBindValue(friendId);
+                    deleteMsgQuery.addBindValue(friendId);
+                    deleteMsgQuery.addBindValue(userId);
+                    success = deleteMsgQuery.exec();
+                }
+
+                if (success) {
+                    db.commit();
+                } else {
+                    db.rollback();
+                }
+            }
+
             if (!success) {
-                qCritical() << "[Async] 删除好友失败:" << query.lastError().text();
+                qCritical() << "[Async] 删除好友失败";
             }
             return QVariant(success);
         },
