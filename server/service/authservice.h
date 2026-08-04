@@ -22,8 +22,6 @@ public:
     void handleLogin(ClientHandler *client, const Message &msg);
 
 signals:
-    void sendResponse(ClientHandler *client, const Message &msg);
-
 private:
     AuthService();
     ~AuthService();

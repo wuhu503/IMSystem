@@ -29,35 +29,14 @@ public:
     //关闭数据库
     void close();
     
-    // ========== 同步接口（保留，authservice 继续使用） ==========
+    // ========== 同步接口（认证与聊天场景仍在使用） ==========
     
     //用户操作
     bool insertUser(const QString &username, const QString &passwordHash, 
                     const QString &salt);
-    bool verifyUser(const QString &username, const QString &passwordHash);
     qint64 getUserId(const QString &username);
     QVariantMap getUserInfo(qint64 userId);
     bool isUsernameExists(const QString &username);
-    void updateUserStatus(qint64 userId, int status);
-    
-    // 好友操作
-    bool addFriendRequest(qint64 userId, qint64 friendId);
-    bool acceptFriendRequest(qint64 userId, qint64 friendId);
-    bool rejectFriendRequest(qint64 userId, qint64 friendId);
-    bool deleteFriend(qint64 userId, qint64 friendId);
-    bool isFriend(qint64 userId, qint64 friendId);
-    bool hasPendingFriendRequest(qint64 userId, qint64 friendId);
-    QJsonArray getFriendList(qint64 userId);
-    QJsonArray getPendingFriendRequests(qint64 userId);
-    QJsonArray searchUsers(const QString &keyword, qint64 excludeUserId);
-    
-    // 消息操作
-    bool saveMessage(const QString &msgId, qint64 senderId, qint64 receiverId,
-                     int type, const QString &content);
-    QJsonArray getChatHistory(qint64 userId, qint64 friendId, 
-                              int limit = 50, int offset = 0);
-    bool markMessageAsRead(const QString &msgId);
-    int getUnreadMessageCount(qint64 userId, qint64 senderId);
 
     // ========== 异步接口（供 chatservice / friendservice 使用） ==========
     

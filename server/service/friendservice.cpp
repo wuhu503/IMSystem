@@ -357,13 +357,6 @@ void FriendService::handlePendingRequests(ClientHandler *client, const Message &
         }, safeClient.data());
 }
 
-void FriendService::broadcastFriendStatus(qint64 userId, int status)
-{
-    Q_UNUSED(userId);
-    Q_UNUSED(status);
-    qInfo() << "广播好友状态变化(待实现)";
-}
-
 Message FriendService::createResponse(MessageType type, uint32_t sequence, 
                                        const QJsonObject &body)
 {

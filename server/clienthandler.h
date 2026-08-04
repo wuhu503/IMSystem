@@ -26,7 +26,6 @@ public:
 
 signals:
     void clientDisconnect(qintptr socketDescriptor);
-    void messageReceived(qint64 userId, const Message &msg);
 
 private slots:
     void onReadyRead();

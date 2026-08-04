@@ -28,8 +28,6 @@ public:
     void handleSearchUser(ClientHandler *client, const Message &msg);
     void handlePendingRequests(ClientHandler *client, const Message &msg);
 
-    void broadcastFriendStatus(qint64 userId, int status);
-
 private:
     FriendService();
     ~FriendService();

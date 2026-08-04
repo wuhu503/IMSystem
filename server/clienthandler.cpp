@@ -130,8 +130,6 @@ void ClientHandler::onDisconnected()
 //处理消息，根据消息的类型来分发业务
 void ClientHandler::handleMessage(const Message &msg)
 {
-    emit messageReceived(m_userId, msg);
-    
     // ========== 登录/注册请求不需要验证 token ==========
     if (msg.type() != MessageType::REQ_REGISTER && 
         msg.type() != MessageType::REQ_LOGIN) {
