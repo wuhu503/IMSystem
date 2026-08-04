@@ -48,33 +48,50 @@ void AuthService::handleRegister(ClientHandler *client, const Message &msg)
         return;
     }
     
-    if (DbManager::instance().isUsernameExists(username)) {
-        sendErrorResponse(client, MessageType::RSP_REGISTER, 
-                         msg.sequence(), "用户名已存在");
-        return;
-    }
-    
+    uint32_t sequence = msg.sequence();
+    QPointer<ClientHandler> safeClient(client);
     QString salt = Utils::generateSalt();
     QString passwordHash = Utils::hashPassword(password, salt);
-    
-    if (!DbManager::instance().insertUser(username, passwordHash, salt)) {
-        sendErrorResponse(client, MessageType::RSP_REGISTER, 
-                         msg.sequence(), "注册失败，请稍后重试");
-        return;
-    }
-    
-    qint64 userId = DbManager::instance().getUserId(username);
-    
-    QJsonObject responseBody;
-    responseBody["success"] = true;
-    responseBody["user_id"] = userId;
-    responseBody["message"] = "注册成功";
-    
-    Message response = createResponse(MessageType::RSP_REGISTER, 
-                                      msg.sequence(), responseBody);
-    client->sendMessage(response);
-    
-    qInfo() << "用户注册成功:" << username << ", userId:" << userId;
+
+    // 异步检查用户名占用
+    DbManager::instance().isUsernameExistsAsync(username,
+        [this, safeClient, sequence, username, passwordHash, salt](bool exists) {
+            if (!safeClient) return;
+
+            if (exists) {
+                sendErrorResponse(safeClient.data(), MessageType::RSP_REGISTER,
+                                 sequence, "用户名已存在");
+                return;
+            }
+
+            // 异步插入用户
+            DbManager::instance().insertUserAsync(username, passwordHash, salt,
+                [this, safeClient, sequence, username](bool inserted) {
+                    if (!safeClient) return;
+
+                    if (!inserted) {
+                        sendErrorResponse(safeClient.data(), MessageType::RSP_REGISTER,
+                                         sequence, "注册失败，请稍后重试");
+                        return;
+                    }
+
+                    // 异步获取新用户ID
+                    DbManager::instance().getUserIdAsync(username,
+                        [this, safeClient, sequence, username](qint64 userId) {
+                            if (!safeClient) return;
+
+                            QJsonObject responseBody;
+                            responseBody["success"] = true;
+                            responseBody["user_id"] = userId;
+                            responseBody["message"] = "注册成功";
+
+                            Message response = createResponse(MessageType::RSP_REGISTER,
+                                                              sequence, responseBody);
+                            safeClient->sendMessage(response);
+                            qInfo() << "用户注册成功:" << username << ", userId:" << userId;
+                        }, safeClient.data());
+                }, safeClient.data());
+        }, safeClient.data());
 }
 
 void AuthService::handleLogin(ClientHandler *client, const Message &msg)
@@ -97,75 +114,90 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
         qInfo() << "当前连接已登录用户" << oldUserId << "，先下线";
         UserManager::instance().userOffline(oldUserId);
     }
-    
-    qint64 userId = DbManager::instance().getUserId(username);
-    if (userId == -1) {
-        sendErrorResponse(client, MessageType::RSP_LOGIN, 
-                         msg.sequence(), "用户名或密码错误");
-        return;
-    }
-    
-    QVariantMap userInfo = DbManager::instance().getUserInfo(userId);
-    QString salt = userInfo["salt"].toString();
-    QString storedHash = userInfo["password_hash"].toString();
-    
-    QString inputHash = Utils::hashPassword(password, salt);
-    if (inputHash != storedHash) {
-        sendErrorResponse(client, MessageType::RSP_LOGIN, 
-                         msg.sequence(), "用户名或密码错误");
-        return;
-    }
-    
-    // 检查该用户是否已在其他连接登录
-    if (UserManager::instance().isOnline(userId)) {
-        ClientHandler *oldHandler = UserManager::instance().getHandler(userId).data();
-        if (oldHandler && oldHandler != client) {
-            qInfo() << "用户" << userId << "在其他地方登录，踢掉旧连接";
-            
-            QJsonObject kickBody;
-            kickBody["success"] = false;
-            kickBody["message"] = "您的账号在其他地方登录";
-            Message kickMsg(MessageType::RSP_LOGIN);
-            kickMsg.setJsonBody(kickBody);
-            oldHandler->sendMessage(kickMsg);
-            
-            // 先从UserManager移除，再断开连接
-            UserManager::instance().userOffline(userId);
-            oldHandler->socket()->disconnectFromHost();
-        }
-    }
-    
-    // 生成Token
-    QString token = Utils::generateUUID();
-    
-    // 设置用户信息
-    client->setUserId(userId);
-    client->setToken(token);
-    
-    // 注册到在线用户管理
-    UserManager::instance().userOnline(userId, client);
-    
-    // 更新在线状态：先置旧账号离线，再置新账号在线（链式执行，避免并发写同一行的竞态）
-    auto markNewUserOnline = [this, client, userId](bool) {
-        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
-    };
-    if (oldUserId != -1 && oldUserId != userId) {
-        DbManager::instance().updateUserStatusAsync(oldUserId, 0, markNewUserOnline, client);
-    } else {
-        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
-    }
-    
-    QJsonObject responseBody;
-    responseBody["success"] = true;
-    responseBody["token"] = token;
-    responseBody["user_id"] = userId;
-    responseBody["message"] = "登录成功";
-    
-    Message response = createResponse(MessageType::RSP_LOGIN, 
-                                      msg.sequence(), responseBody);
-    client->sendMessage(response);
-    
-    qInfo() << "用户登录成功:" << username << ", userId:" << userId;
+
+    uint32_t sequence = msg.sequence();
+    QPointer<ClientHandler> safeClient(client);
+
+    // 异步查询用户ID
+    DbManager::instance().getUserIdAsync(username,
+        [this, safeClient, sequence, username, password, oldUserId](qint64 userId) {
+            if (!safeClient) return;
+
+            if (userId == -1) {
+                sendErrorResponse(safeClient.data(), MessageType::RSP_LOGIN,
+                                 sequence, "用户名或密码错误");
+                return;
+            }
+
+            // 异步获取用户信息（含盐与哈希，用于校验密码）
+            DbManager::instance().getUserInfoAsync(userId,
+                [this, safeClient, sequence, username, password, userId, oldUserId](QVariantMap userInfo) {
+                    if (!safeClient) return;
+
+                    QString salt = userInfo["salt"].toString();
+                    QString storedHash = userInfo["password_hash"].toString();
+
+                    QString inputHash = Utils::hashPassword(password, salt);
+                    if (inputHash != storedHash) {
+                        sendErrorResponse(safeClient.data(), MessageType::RSP_LOGIN,
+                                         sequence, "用户名或密码错误");
+                        return;
+                    }
+
+                    ClientHandler *client = safeClient.data();
+
+                    // 检查该用户是否已在其他连接登录
+                    if (UserManager::instance().isOnline(userId)) {
+                        ClientHandler *oldHandler = UserManager::instance().getHandler(userId).data();
+                        if (oldHandler && oldHandler != client) {
+                            qInfo() << "用户" << userId << "在其他地方登录，踢掉旧连接";
+
+                            QJsonObject kickBody;
+                            kickBody["success"] = false;
+                            kickBody["message"] = "您的账号在其他地方登录";
+                            Message kickMsg(MessageType::RSP_LOGIN);
+                            kickMsg.setJsonBody(kickBody);
+                            oldHandler->sendMessage(kickMsg);
+
+                            // 先从UserManager移除，再断开连接
+                            UserManager::instance().userOffline(userId);
+                            oldHandler->socket()->disconnectFromHost();
+                        }
+                    }
+
+                    // 生成Token
+                    QString token = Utils::generateUUID();
+
+                    // 设置用户信息
+                    client->setUserId(userId);
+                    client->setToken(token);
+
+                    // 注册到在线用户管理
+                    UserManager::instance().userOnline(userId, client);
+
+                    // 更新在线状态：先置旧账号离线，再置新账号在线（链式执行，避免并发写同一行的竞态）
+                    auto markNewUserOnline = [this, client, userId](bool) {
+                        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
+                    };
+                    if (oldUserId != -1 && oldUserId != userId) {
+                        DbManager::instance().updateUserStatusAsync(oldUserId, 0, markNewUserOnline, client);
+                    } else {
+                        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
+                    }
+
+                    QJsonObject responseBody;
+                    responseBody["success"] = true;
+                    responseBody["token"] = token;
+                    responseBody["user_id"] = userId;
+                    responseBody["message"] = "登录成功";
+
+                    Message response = createResponse(MessageType::RSP_LOGIN,
+                                                      sequence, responseBody);
+                    client->sendMessage(response);
+
+                    qInfo() << "用户登录成功:" << username << ", userId:" << userId;
+                }, safeClient.data());
+        }, safeClient.data());
 }
 
 Message AuthService::createResponse(MessageType type, uint32_t sequence, 

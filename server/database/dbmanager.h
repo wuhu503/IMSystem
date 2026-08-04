@@ -29,21 +29,25 @@ public:
     //关闭数据库
     void close();
     
-    // ========== 同步接口（认证与聊天场景仍在使用） ==========
-    
-    //用户操作
-    bool insertUser(const QString &username, const QString &passwordHash, 
-                    const QString &salt);
-    qint64 getUserId(const QString &username);
+    // ========== 同步接口（聊天场景仍在使用） ==========
+
     QVariantMap getUserInfo(qint64 userId);
-    bool isUsernameExists(const QString &username);
 
     // ========== 异步接口（供 chatservice / friendservice 使用） ==========
     
+    // 异步查询用户名是否已存在
+    void isUsernameExistsAsync(const QString &username,
+                               std::function<void(bool)> callback, QObject *receiver);
+
     // 异步查询用户ID
     void getUserIdAsync(const QString &username, 
                         std::function<void(qint64)> callback, QObject *receiver);
     
+    // 异步插入用户（注册）
+    void insertUserAsync(const QString &username, const QString &passwordHash,
+                         const QString &salt,
+                         std::function<void(bool)> callback, QObject *receiver);
+
     // 异步查询用户信息
     void getUserInfoAsync(qint64 userId, 
                           std::function<void(QVariantMap)> callback, QObject *receiver);
@@ -102,7 +106,6 @@ private:
     ~DbManager();
     
     bool createTables();
-    bool isUsernameExistsInternal(const QString &username);  // 无锁版本，供已持锁方法调用
     
     QSqlDatabase m_db;
     bool m_initialized;

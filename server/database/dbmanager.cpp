@@ -165,54 +165,6 @@ bool DbManager::createTables()
     return true;
 }
 
-// ========== 用户操作 ==========
-
-bool DbManager::insertUser(const QString &username, const QString &passwordHash, 
-                           const QString &salt)
-{
-    QMutexLocker locker(&m_mutex);
-    if (isUsernameExistsInternal(username)) {
-        qWarning() << "用户名已存在:" << username;
-        return false;
-    }
-    
-    QSqlQuery query;
-    query.prepare(
-        "INSERT INTO users (username, password_hash, salt, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?)"
-    );
-    
-    qint64 now = QDateTime::currentSecsSinceEpoch();
-    query.addBindValue(username);
-    query.addBindValue(passwordHash);
-    query.addBindValue(salt);
-    query.addBindValue(now);
-    query.addBindValue(now);
-    
-    if (!query.exec()) {
-        qCritical() << "插入用户失败:" << query.lastError().text();
-        return false;
-    }
-    
-    qInfo() << "用户注册成功:" << username;
-    return true;
-}
-
-qint64 DbManager::getUserId(const QString &username)
-{
-    QMutexLocker locker(&m_mutex);
-    QSqlQuery query;
-    query.prepare("SELECT id FROM users WHERE username = ?");
-    query.addBindValue(username);
-    
-    if (!query.exec() || !query.next()) {
-        return -1;
-    }
-    
-    return query.value("id").toLongLong();
-}
-
-
 QVariantMap DbManager::getUserInfo(qint64 userId)
 {
     QMutexLocker locker(&m_mutex);
@@ -241,32 +193,33 @@ QVariantMap DbManager::getUserInfo(qint64 userId)
     return info;
 }
 
-bool DbManager::isUsernameExists(const QString &username)
-{
-    QMutexLocker locker(&m_mutex);
-    return isUsernameExistsInternal(username);
-}
-
-bool DbManager::isUsernameExistsInternal(const QString &username)
-{
-    // 无锁版本，供 insertUser 等已持锁方法调用，避免死锁
-    QSqlQuery query;
-    query.prepare("SELECT COUNT(*) FROM users WHERE username = ?");
-    query.addBindValue(username);
-    
-    if (!query.exec() || !query.next()) {
-        return false;
-    }
-    
-    return (query.value(0).toInt() > 0);
-}
-
 // ============================================================================
 // 异步方法实现 —— 使用 TaskRunner 将数据库操作提交到线程池
 // ============================================================================
 
 #include "../threading/taskrunner.h"
 #include "../threading/dbconnectionhelper.h"
+
+void DbManager::isUsernameExistsAsync(const QString &username,
+                                      std::function<void(bool)> callback, QObject *receiver)
+{
+    TaskRunner::instance().runDbTask(
+        receiver,
+        [username]() -> QVariant {
+            QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
+            QSqlQuery query(db);
+            query.prepare("SELECT COUNT(*) FROM users WHERE username = ?");
+            query.addBindValue(username);
+            if (query.exec() && query.next()) {
+                return QVariant(query.value(0).toInt() > 0);
+            }
+            return QVariant(false);
+        },
+        [callback](QVariant result) {
+            if (callback) callback(result.toBool());
+        }
+    );
+}
 
 void DbManager::getUserIdAsync(const QString &username, 
                                 std::function<void(qint64)> callback, QObject *receiver)
@@ -287,6 +240,38 @@ void DbManager::getUserIdAsync(const QString &username,
     );
 }
 
+void DbManager::insertUserAsync(const QString &username, const QString &passwordHash,
+                                 const QString &salt,
+                                 std::function<void(bool)> callback, QObject *receiver)
+{
+    TaskRunner::instance().runDbTask(
+        receiver,
+        [username, passwordHash, salt]() -> QVariant {
+            QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
+            QSqlQuery query(db);
+            query.prepare(
+                "INSERT INTO users (username, password_hash, salt, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)"
+            );
+            qint64 now = QDateTime::currentSecsSinceEpoch();
+            query.addBindValue(username);
+            query.addBindValue(passwordHash);
+            query.addBindValue(salt);
+            query.addBindValue(now);
+            query.addBindValue(now);
+
+            bool success = query.exec();
+            if (!success) {
+                qCritical() << "[Async] 插入用户失败:" << query.lastError().text();
+            }
+            return QVariant(success);
+        },
+        [callback](QVariant result) {
+            if (callback) callback(result.toBool());
+        }
+    );
+}
+
 void DbManager::getUserInfoAsync(qint64 userId, 
                                   std::function<void(QVariantMap)> callback, QObject *receiver)
 {
@@ -297,7 +282,7 @@ void DbManager::getUserInfoAsync(qint64 userId,
             QSqlDatabase db = DbConnectionHelper::threadLocalConnection();
             QSqlQuery query(db);
             query.prepare(
-                "SELECT id, username, nickname, avatar, status "
+                "SELECT id, username, password_hash, salt, nickname, avatar, status "
                 "FROM users WHERE id = ?"
             );
             query.addBindValue(userId);
@@ -305,6 +290,8 @@ void DbManager::getUserInfoAsync(qint64 userId,
             if (query.exec() && query.next()) {
                 info["id"] = query.value("id").toLongLong();
                 info["username"] = query.value("username").toString();
+                info["password_hash"] = query.value("password_hash").toString();
+                info["salt"] = query.value("salt").toString();
                 info["nickname"] = query.value("nickname").toString();
                 info["avatar"] = query.value("avatar").toString();
                 info["status"] = query.value("status").toInt();
