@@ -4,6 +4,7 @@
 #include "dbmanager.h"
 #include "usermanager.h"
 #include "utils.h"
+#include <QPointer>
 
 AuthService& AuthService::instance()
 {
@@ -90,11 +91,11 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
         return;
     }
     
-    // 如果当前连接已经登录了，先下线旧用户
-    if (client->userId() != -1) {
-        qInfo() << "当前连接已登录用户" << client->userId() << "，先下线";
-        UserManager::instance().userOffline(client->userId());
-        DbManager::instance().updateUserStatusAsync(client->userId(), 0, nullptr, client);
+    // 如果当前连接已经登录了，先下线旧用户（内存层面；DB 状态在登录成功后链式更新）
+    qint64 oldUserId = client->userId();
+    if (oldUserId != -1) {
+        qInfo() << "当前连接已登录用户" << oldUserId << "，先下线";
+        UserManager::instance().userOffline(oldUserId);
     }
     
     qint64 userId = DbManager::instance().getUserId(username);
@@ -117,7 +118,7 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
     
     // 检查该用户是否已在其他连接登录
     if (UserManager::instance().isOnline(userId)) {
-        ClientHandler *oldHandler = UserManager::instance().getHandler(userId);
+        ClientHandler *oldHandler = UserManager::instance().getHandler(userId).data();
         if (oldHandler && oldHandler != client) {
             qInfo() << "用户" << userId << "在其他地方登录，踢掉旧连接";
             
@@ -144,8 +145,15 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
     // 注册到在线用户管理
     UserManager::instance().userOnline(userId, client);
     
-    // 更新在线状态
-    DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
+    // 更新在线状态：先置旧账号离线，再置新账号在线（链式执行，避免并发写同一行的竞态）
+    auto markNewUserOnline = [this, client, userId](bool) {
+        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
+    };
+    if (oldUserId != -1 && oldUserId != userId) {
+        DbManager::instance().updateUserStatusAsync(oldUserId, 0, markNewUserOnline, client);
+    } else {
+        DbManager::instance().updateUserStatusAsync(userId, 1, nullptr, client);
+    }
     
     QJsonObject responseBody;
     responseBody["success"] = true;

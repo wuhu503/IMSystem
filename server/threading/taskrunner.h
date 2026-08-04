@@ -8,6 +8,7 @@
 #include <functional>
 #include <QDebug>
 #include <QVariant>
+#include "dbconnectionhelper.h"
 
 class DbTask : public QRunnable
 {
@@ -30,11 +31,20 @@ public:
             result = m_task();
         }
 
+        // 任务执行完毕，清理线程本地数据库连接，避免连接只建不清理
+        DbConnectionHelper::cleanupCurrentThread();
+
         QPointer<QObject> safeReceiver = m_receiver;
         CallbackFunc callback = std::move(m_callback);
-        
+
+        // 接收者可能已被销毁，投递前判空，避免悬垂指针
+        if (!safeReceiver) {
+            qWarning() << "[TaskRunner] 接收者已销毁，丢弃任务结果";
+            return;
+        }
+
         QMetaObject::invokeMethod(
-            m_receiver,
+            safeReceiver.data(),
             [safeReceiver, callback, result]() {
                 if (safeReceiver && callback) {
                     callback(result);

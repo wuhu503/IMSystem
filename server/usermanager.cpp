@@ -36,7 +36,7 @@ bool UserManager::isOnline(qint64 userId) const
     return m_onlineUsers.contains(userId);
 }
 
-ClientHandler* UserManager::getHandler(qint64 userId) const
+QPointer<ClientHandler> UserManager::getHandler(qint64 userId) const
 {
     QMutexLocker locker(&m_mutex);
     return m_onlineUsers.value(userId, nullptr);

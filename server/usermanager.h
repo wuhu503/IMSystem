@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QMap>
 #include <QMutex>
+#include <QPointer>
 
 class ClientHandler;
 
@@ -23,7 +24,7 @@ public:
     
     // 查询在线状态
     bool isOnline(qint64 userId) const;
-    ClientHandler* getHandler(qint64 userId) const;
+    QPointer<ClientHandler> getHandler(qint64 userId) const;
     
     // 获取在线用户数
     int onlineCount() const;
