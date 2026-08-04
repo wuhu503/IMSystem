@@ -5,6 +5,31 @@
 #include "usermanager.h"
 #include <cstring>
 
+namespace {
+
+// 认证失败响应必须使用对应的 RSP_* 类型，否则客户端按类型分发时无法识别
+MessageType authErrorResponseType(MessageType reqType)
+{
+    switch (reqType) {
+    case MessageType::REQ_REGISTER:          return MessageType::RSP_REGISTER;
+    case MessageType::REQ_LOGIN:             return MessageType::RSP_LOGIN;
+    case MessageType::REQ_LOGOUT:            return MessageType::RSP_LOGOUT;
+    case MessageType::REQ_ADD_FRIEND:        return MessageType::RSP_ADD_FRIEND;
+    case MessageType::REQ_FRIEND_LIST:       return MessageType::RSP_FRIEND_LIST;
+    case MessageType::REQ_ACCEPT_FRIEND:     return MessageType::RSP_ACCEPT_FRIEND;
+    case MessageType::REQ_REJECT_FRIEND:     return MessageType::RSP_REJECT_FRIEND;
+    case MessageType::REQ_DELETE_FRIEND:     return MessageType::RSP_DELETE_FRIEND;
+    case MessageType::REQ_SEARCH_USER:       return MessageType::RSP_SEARCH_USER;
+    case MessageType::REQ_PENDING_REQUESTS:  return MessageType::RSP_PENDING_REQUESTS;
+    case MessageType::MSG_TEXT:              return MessageType::MSG_ACK;
+    case MessageType::MSG_HISTORY:           return MessageType::MSG_HISTORY;
+    case MessageType::MSG_ACK:               return MessageType::MSG_ACK;
+    default:                                 return reqType;
+    }
+}
+
+} // namespace
+
 ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
     : QObject(parent)
     , m_socket(socket)
@@ -264,7 +289,7 @@ void ClientHandler::sendAuthErrorResponse(MessageType type, uint32_t sequence, c
     body["success"] = false;
     body["message"] = reason;
     
-    Message response(type);
+    Message response(authErrorResponseType(type));
     response.setSequence(sequence);
     response.setJsonBody(body);
     sendMessage(response);

@@ -280,13 +280,25 @@ void MainWindow::handleLoginResponse(const QJsonObject &body)
 
 void MainWindow::handleFriendListResponse(const QJsonObject &body)
 {
-    if (!body["success"].toBool()) return;
+    if (!body["success"].toBool()) {
+        QString message = body["message"].toString();
+        qWarning() << "获取好友列表失败:" << message;
+        QMessageBox::warning(this, QString::fromUtf8("提示"),
+                             message.isEmpty() ? QString::fromUtf8("获取好友列表失败") : message);
+        return;
+    }
     updateFriendList(body["friends"].toArray());
 }
 
 void MainWindow::handlePendingRequestsResponse(const QJsonObject &body)
 {
-    if (!body["success"].toBool()) return;
+    if (!body["success"].toBool()) {
+        QString message = body["message"].toString();
+        qWarning() << "获取好友请求失败:" << message;
+        QMessageBox::warning(this, QString::fromUtf8("提示"),
+                             message.isEmpty() ? QString::fromUtf8("获取好友请求失败") : message);
+        return;
+    }
     showPendingRequestsDialog(body["requests"].toArray());
 }
 
@@ -382,10 +394,16 @@ void MainWindow::handleMessageAckResponse(const QJsonObject &body)
 
 void MainWindow::handleHistoryResponse(const QJsonObject &body)
 {
-    if (!body["success"].toBool()) return;
-
     // 会话已切换，丢弃过期历史响应，避免聊天记录串窗口
     if (m_historyGeneration != m_chatGeneration) return;
+
+    if (!body["success"].toBool()) {
+        QString message = body["message"].toString();
+        qWarning() << "获取聊天记录失败:" << message;
+        QMessageBox::warning(this, QString::fromUtf8("提示"),
+                             message.isEmpty() ? QString::fromUtf8("获取聊天记录失败") : message);
+        return;
+    }
     
     QJsonArray messages = body["messages"].toArray();
     for (int i = messages.size() - 1; i >= 0; --i) {
