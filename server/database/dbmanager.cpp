@@ -48,6 +48,12 @@ bool DbManager::init(const QString &dbPath)
     }
     
     qInfo() << "数据库已打开:" << absolutePath;
+
+    // 主连接同样启用 WAL / 忙等待 / 外键约束
+    QSqlQuery pragmaQuery(m_db);
+    pragmaQuery.exec("PRAGMA journal_mode=WAL");
+    pragmaQuery.exec("PRAGMA busy_timeout=5000");
+    pragmaQuery.exec("PRAGMA foreign_keys=ON");
     
     if (!createTables()) {
         qCritical() << "创建表失败";

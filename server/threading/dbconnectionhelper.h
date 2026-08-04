@@ -31,6 +31,8 @@ public:
             
             QSqlQuery pragmaQuery(db);
             pragmaQuery.exec("PRAGMA journal_mode=WAL");
+            pragmaQuery.exec("PRAGMA busy_timeout=5000");
+            pragmaQuery.exec("PRAGMA foreign_keys=ON");
             
             qInfo() << "[DbConnectionHelper] 线程" << QThread::currentThreadId()
                     << "创建数据库连接:" << connectionName;

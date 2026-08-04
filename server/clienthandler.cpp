@@ -10,6 +10,9 @@ ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
     , m_socket(socket)
     , m_userId(-1)
 {
+    // 由 ClientHandler 接管 socket 生命周期，handler 销毁时连接对象一并释放
+    socket->setParent(this);
+
     connect(m_socket, &QTcpSocket::readyRead, this, &ClientHandler::onReadyRead);
     connect(m_socket, &QTcpSocket::disconnected, this, &ClientHandler::onDisconnected);
     
@@ -59,7 +62,6 @@ void ClientHandler::sendMessage(const Message &msg)
     
     QByteArray data = msg.serialize();
     m_socket->write(data);
-    m_socket->flush();
 }
 
 //解析来自客户端的数据

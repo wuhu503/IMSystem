@@ -39,6 +39,11 @@ uint32_t Message::sequence() const
 //消息体操作
 void Message::setBody(const QByteArray& body)
 {
+    if (body.size() > MAX_BODY_SIZE) {
+        qWarning() << "Message::setBody: body 超过上限，拒绝写入:"
+                   << body.size() << ">=" << MAX_BODY_SIZE;
+        return;
+    }
     m_body = body;
     m_header.bodyLength = static_cast<uint32_t>(m_body.size());
 }
@@ -51,6 +56,12 @@ QByteArray Message::body() const
 //序列化
 QByteArray Message::serialize() const
 {
+    if (m_body.size() > MAX_BODY_SIZE) {
+        qWarning() << "Message::serialize: body 超过上限，拒绝序列化:"
+                   << m_body.size() << ">=" << MAX_BODY_SIZE;
+        return QByteArray();
+    }
+
     int totalSize = HEADER_SIZE + m_body.size();
     QByteArray data(totalSize, '\0');
 
@@ -130,7 +141,13 @@ Message Message::invalidMessage()
 void Message::setJsonBody(const QJsonObject& json)
 {
     QJsonDocument doc(json);
-    m_body = doc.toJson(QJsonDocument::Compact);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+    if (data.size() > MAX_BODY_SIZE) {
+        qWarning() << "Message::setJsonBody: body 超过上限，拒绝写入:"
+                   << data.size() << ">=" << MAX_BODY_SIZE;
+        return;
+    }
+    m_body = data;
     m_header.bodyLength = static_cast<uint32_t>(m_body.size());
 }
 

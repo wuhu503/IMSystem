@@ -46,8 +46,8 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
 {
     qInfo() << "新连接请求, socketDescriptor:" << socketDescriptor;
 
-    //创建 socket 并设置描述符
-    QTcpSocket *socket = new QTcpSocket(this);
+    //创建 socket 并设置描述符（无父对象，随后交由 ClientHandler 接管生命周期）
+    QTcpSocket *socket = new QTcpSocket;
     if (!socket->setSocketDescriptor(socketDescriptor)) {
         qWarning() << "设置 socket 描述符失败";
         delete socket;
