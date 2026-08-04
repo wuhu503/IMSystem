@@ -62,7 +62,7 @@ void RegisterDialog::on_registerBtn_clicked()
     ui->registerBtn->setText(QString::fromUtf8("连接中..."));
     ui->backBtn->setEnabled(false);
     
-    if (TcpClient::instance().isConnect()) {
+    if (TcpClient::instance().isConnected()) {
         sendRegisterRequest(m_username, m_password);
     } else {
         // 使用登录界面配置的服务器地址，而非硬编码
@@ -109,15 +109,12 @@ void RegisterDialog::onErrorOccurred(const QString &error)
 
 void RegisterDialog::sendRegisterRequest(const QString &username, const QString &password)
 {
-    Message msg(MessageType::REQ_REGISTER);
-    msg.setSequence(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
-
     QJsonObject body;
     body["username"] = username;
     body["password"] = password;
-    msg.setJsonBody(body);
 
-    TcpClient::instance().sendMessage(msg);
+    uint32_t sequence = static_cast<uint32_t>(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_REGISTER, body, sequence);
 }
 
 void RegisterDialog::handleRegisterResponse(const QJsonObject &body)

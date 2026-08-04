@@ -44,7 +44,7 @@ void TcpClient::connectToServer(const QString& host,quint16 port)
     m_socket->connectToHost(host,port);
 }
 
-void TcpClient::disconnectToServer()
+void TcpClient::disconnectFromServer()
 {
     if(m_socket->state()!=QAbstractSocket::ConnectedState)
     {
@@ -54,29 +54,40 @@ void TcpClient::disconnectToServer()
     m_socket->disconnectFromHost();
 }
 
-void TcpClient::sendMessage(Message &msg)
+void TcpClient::sendMessage(const Message &msg)
 {
-    if(!isConnect())
+    if(!isConnected())
     {
         qInfo()<<"未连接上服务器";
         return;
     }
     
-    // 非登录/注册请求，自动注入 token
-    if (msg.type() != MessageType::REQ_LOGIN && 
-        msg.type() != MessageType::REQ_REGISTER &&
-        !m_token.isEmpty()) {
-        QJsonObject body = msg.jsonBody();
-        body["token"] = m_token;
-        msg.setJsonBody(body);
-    }
-    
     QByteArray data=msg.serialize();
     m_socket->write(data);
-    m_socket->flush();
 }
 
-bool TcpClient::isConnect() const
+void TcpClient::sendJsonMessage(MessageType type, const QJsonObject &body, uint32_t sequence)
+{
+    if (!isConnected()) {
+        qInfo() << "未连接上服务器";
+        return;
+    }
+
+    QJsonObject json = body;
+    // 非登录/注册请求，自动注入 token（构造时完成，只序列化一次）
+    if (type != MessageType::REQ_LOGIN &&
+        type != MessageType::REQ_REGISTER &&
+        !m_token.isEmpty()) {
+        json["token"] = m_token;
+    }
+
+    Message msg(type);
+    msg.setSequence(sequence);
+    msg.setJsonBody(json);
+    m_socket->write(msg.serialize());
+}
+
+bool TcpClient::isConnected() const
 {
     return m_socket->state()==QAbstractSocket::ConnectedState;
 }

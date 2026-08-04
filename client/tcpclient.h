@@ -13,11 +13,12 @@ public:
     static TcpClient& instance();
     void connectToServer(const QString& host,quint16 port);
 
-    void disconnectToServer();
+    void disconnectFromServer();
 
-    void sendMessage(Message &msg);
+    void sendMessage(const Message &msg);
+    void sendJsonMessage(MessageType type, const QJsonObject &body, uint32_t sequence);
 
-    bool isConnect() const;
+    bool isConnected() const;
     bool isConnecting() const;  // 是否正在连接中
 
     QString host() const;

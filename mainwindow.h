@@ -42,11 +42,12 @@ private slots:
 
 private:
     void initFriendList();
-    void appendMessage(const QString &nickname, const QString &message, bool isSelf);
+    void appendMessage(const QString &nickname, const QString &message, bool isSelf,
+                       qint64 timestamp = 0);
     void requestFriendList();
     void requestPendingFriendRequests();
     void requestChatHistory(const QString &friendUsername);
-    void handleHeartbeat(const QJsonObject &body);
+    void handleLoginResponse(const QJsonObject &body);
     void handleFriendListResponse(const QJsonObject &body);
     void handlePendingRequestsResponse(const QJsonObject &body);
     void handleAddFriendResponse(const QJsonObject &body);
@@ -66,6 +67,8 @@ private:
     QString currentChatFriend;
     QString m_username;
     std::atomic<uint32_t> m_sequenceCounter{1};  // 消息序列号计数器
+    int m_chatGeneration = 0;     // 当前会话代次，点击好友时自增
+    int m_historyGeneration = 0;  // 最近一次历史请求对应的会话代次
 };
 
 #endif // MAINWINDOW_H

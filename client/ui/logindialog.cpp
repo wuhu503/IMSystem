@@ -71,7 +71,7 @@ void LoginDialog::on_loginBtn_clicked()
     ui->loginBtn->setText(QString::fromUtf8("连接中..."));
     ui->registerBtn->setEnabled(false);
     
-    if (TcpClient::instance().isConnect()) {
+    if (TcpClient::instance().isConnected()) {
         sendLoginRequest(m_username, m_password);
     } else {
         TcpClient::instance().connectToServer(server, port);
@@ -123,15 +123,11 @@ void LoginDialog::onErrorOccurred(const QString &error)
 
 void LoginDialog::sendLoginRequest(const QString &username, const QString &password)
 {
-    Message msg(MessageType::REQ_LOGIN);
-    msg.setSequence(1);
-
     QJsonObject body;
     body["username"] = username;
     body["password"] = password;
-    msg.setJsonBody(body);
 
-    TcpClient::instance().sendMessage(msg);
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_LOGIN, body, 1);
 }
 
 void LoginDialog::handleLoginResponse(const QJsonObject &body)

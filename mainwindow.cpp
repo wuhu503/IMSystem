@@ -83,7 +83,10 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
     
     QString nickname = item->data(Qt::UserRole).toString();
     QString status = item->data(Qt::UserRole + 1).toString();
-    
+
+    ++m_chatGeneration;
+    m_historyGeneration = m_chatGeneration;
+
     currentChatFriend = nickname;
     ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
     ui->messageBrowser->clear();
@@ -102,16 +105,12 @@ void MainWindow::onSendClicked()
     
     QString message = ui->messageInput->toPlainText().trimmed();
     if (message.isEmpty()) return;
-    
-    Message msg(MessageType::MSG_TEXT);
-    msg.setSequence(m_sequenceCounter.fetch_add(1));
-    
+
     QJsonObject body;
     body["receiver"] = currentChatFriend;
     body["content"] = message;
-    msg.setJsonBody(body);
-    
-    TcpClient::instance().sendMessage(msg);
+    TcpClient::instance().sendJsonMessage(MessageType::MSG_TEXT, body,
+                                          m_sequenceCounter.fetch_add(1));
     
     appendMessage(m_username, message, true);
     ui->messageInput->clear();
@@ -152,12 +151,10 @@ void MainWindow::onDeleteFriendClicked()
         QMessageBox::Yes | QMessageBox::No);
     
     if (reply == QMessageBox::Yes) {
-        Message msg(MessageType::REQ_DELETE_FRIEND);
-        msg.setSequence(m_sequenceCounter.fetch_add(1));
         QJsonObject body;
         body["username"] = currentChatFriend;
-        msg.setJsonBody(body);
-        TcpClient::instance().sendMessage(msg);
+        TcpClient::instance().sendJsonMessage(MessageType::REQ_DELETE_FRIEND, body,
+                                              m_sequenceCounter.fetch_add(1));
     }
 }
 
@@ -194,8 +191,8 @@ void MainWindow::onMessageReceived(const Message &msg)
     case MessageType::MSG_HISTORY:
         handleHistoryResponse(msg.jsonBody());
         break;
-    case MessageType::HEARTBEAT:
-        handleHeartbeat(msg.jsonBody());
+    case MessageType::RSP_LOGIN:
+        handleLoginResponse(msg.jsonBody());
         break;
     default:
         break;
@@ -216,38 +213,36 @@ void MainWindow::onErrorOccurred(const QString &error) { qWarning() << "连接�
 
 void MainWindow::requestFriendList()
 {
-    Message msg(MessageType::REQ_FRIEND_LIST);
-    msg.setSequence(m_sequenceCounter.fetch_add(1));
-    msg.setJsonBody(QJsonObject());
-    TcpClient::instance().sendMessage(msg);
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_FRIEND_LIST, QJsonObject(),
+                                          m_sequenceCounter.fetch_add(1));
 }
 
 void MainWindow::requestPendingFriendRequests()
 {
-    Message msg(MessageType::REQ_PENDING_REQUESTS);
-    msg.setSequence(m_sequenceCounter.fetch_add(1));
-    msg.setJsonBody(QJsonObject());
-    TcpClient::instance().sendMessage(msg);
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_PENDING_REQUESTS, QJsonObject(),
+                                          m_sequenceCounter.fetch_add(1));
 }
 
 void MainWindow::requestChatHistory(const QString &friendUsername)
 {
-    Message msg(MessageType::MSG_HISTORY);
-    msg.setSequence(m_sequenceCounter.fetch_add(1));
     QJsonObject body;
     body["username"] = friendUsername;
     body["limit"] = 50;
     body["offset"] = 0;
-    msg.setJsonBody(body);
-    TcpClient::instance().sendMessage(msg);
+    TcpClient::instance().sendJsonMessage(MessageType::MSG_HISTORY, body,
+                                          m_sequenceCounter.fetch_add(1));
 }
 
-void MainWindow::handleHeartbeat(const QJsonObject &body)
+void MainWindow::handleLoginResponse(const QJsonObject &body)
 {
-    QString message = body["message"].toString();
-    if (message.contains("其他地方登录") || body["type"].toString() == "kicked") {
-        QMessageBox::warning(this, QString::fromUtf8("提示"), message);
-        TcpClient::instance().disconnectToServer();
+    bool success = body["success"].toBool();
+
+    // 主窗口收到 RSP_LOGIN 只可能是被其他设备顶下线（正常登录在登录对话框完成）
+    if (!success) {
+        QString message = body["message"].toString();
+        QMessageBox::warning(this, QString::fromUtf8("提示"),
+                             message.isEmpty() ? QString::fromUtf8("登录已失效") : message);
+        TcpClient::instance().disconnectFromServer();
         QApplication::quit();
     }
 }
@@ -357,14 +352,18 @@ void MainWindow::handleMessageAckResponse(const QJsonObject &body)
 void MainWindow::handleHistoryResponse(const QJsonObject &body)
 {
     if (!body["success"].toBool()) return;
+
+    // 会话已切换，丢弃过期历史响应，避免聊天记录串窗口
+    if (m_historyGeneration != m_chatGeneration) return;
     
     QJsonArray messages = body["messages"].toArray();
     for (int i = messages.size() - 1; i >= 0; --i) {
         QJsonObject msgObj = messages[i].toObject();
         QString senderName = msgObj["sender_name"].toString();
         QString content = msgObj["content"].toString();
+        qint64 timestamp = msgObj["timestamp"].toVariant().toLongLong();
         bool isSelf = (senderName == m_username);
-        appendMessage(senderName, content, isSelf);
+        appendMessage(senderName, content, isSelf, timestamp);
     }
 }
 
@@ -405,12 +404,10 @@ void MainWindow::showAddFriendDialog()
         QLineEdit::Normal, "", &ok);
     
     if (ok && !username.isEmpty()) {
-        Message msg(MessageType::REQ_ADD_FRIEND);
-        msg.setSequence(m_sequenceCounter.fetch_add(1));
         QJsonObject body;
         body["username"] = username;
-        msg.setJsonBody(body);
-        TcpClient::instance().sendMessage(msg);
+        TcpClient::instance().sendJsonMessage(MessageType::REQ_ADD_FRIEND, body,
+                                              m_sequenceCounter.fetch_add(1));
     }
 }
 
@@ -483,12 +480,10 @@ void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
                 return;
             }
             QString username = currentItem->data(Qt::UserRole).toString();
-            Message msg(MessageType::REQ_ACCEPT_FRIEND);
-            msg.setSequence(m_sequenceCounter.fetch_add(1));
             QJsonObject body;
             body["username"] = username;
-            msg.setJsonBody(body);
-            TcpClient::instance().sendMessage(msg);
+            TcpClient::instance().sendJsonMessage(MessageType::REQ_ACCEPT_FRIEND, body,
+                                                  m_sequenceCounter.fetch_add(1));
             delete requestList->takeItem(requestList->row(currentItem));
         });
         
@@ -499,12 +494,10 @@ void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
                 return;
             }
             QString username = currentItem->data(Qt::UserRole).toString();
-            Message msg(MessageType::REQ_REJECT_FRIEND);
-            msg.setSequence(m_sequenceCounter.fetch_add(1));
             QJsonObject body;
             body["username"] = username;
-            msg.setJsonBody(body);
-            TcpClient::instance().sendMessage(msg);
+            TcpClient::instance().sendJsonMessage(MessageType::REQ_REJECT_FRIEND, body,
+                                                  m_sequenceCounter.fetch_add(1));
             delete requestList->takeItem(requestList->row(currentItem));
         });
         
@@ -514,10 +507,16 @@ void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
     dialog.exec();
 }
 
-void MainWindow::appendMessage(const QString &nickname, const QString &message, bool isSelf)
+void MainWindow::appendMessage(const QString &nickname, const QString &message, bool isSelf,
+                               qint64 timestamp)
 {
     Q_UNUSED(nickname);
-    QString time = QTime::currentTime().toString("hh:mm");
+    QString time;
+    if (timestamp > 0) {
+        time = QDateTime::fromSecsSinceEpoch(timestamp).toString("MM-dd hh:mm");
+    } else {
+        time = QTime::currentTime().toString("hh:mm");
+    }
     
     QString html;
     if (isSelf) {
