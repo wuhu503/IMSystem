@@ -5,17 +5,30 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    
-    // 显示登录对话框
-    LoginDialog loginDialog;
-    if (loginDialog.exec() == QDialog::Accepted) {
-        // 登录成功，显示主界面
+
+    // 登录成功后进入主界面；退出登录或连接断开时回到登录界面，关闭窗口则退出程序
+    bool backToLogin = false;
+    while (true) {
+        LoginDialog loginDialog;
+        if (loginDialog.exec() != QDialog::Accepted) {
+            break;
+        }
+
         MainWindow w;
+        QObject::connect(&w, &MainWindow::logoutRequested, &w, &QWidget::close);
+        QObject::connect(&w, &MainWindow::logoutRequested, [&backToLogin]() {
+            backToLogin = true;
+        });
         w.setUsername(loginDialog.username());  // 传递用户名
         w.show();
-        return a.exec();
+
+        a.exec();
+
+        if (!backToLogin) {
+            break;
+        }
+        backToLogin = false;
     }
-    
-    // 登录取消或失败，退出程序
+
     return 0;
 }

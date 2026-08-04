@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QDebug>
 #include <QDialog>
+#include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QListWidget>
@@ -128,6 +129,17 @@ void MainWindow::onSearchTextChanged(const QString &text)
 
 void MainWindow::on_actionExit_triggered() { QApplication::quit(); }
 
+void MainWindow::on_actionLogout_triggered()
+{
+    // 通知服务器下线并断开连接，随后返回登录界面
+    m_loggingOut = true;
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_LOGOUT, QJsonObject(),
+                                          m_sequenceCounter.fetch_add(1));
+    TcpClient::instance().disconnectFromServer();
+    TcpClient::instance().clearToken();
+    emit logoutRequested();
+}
+
 void MainWindow::on_actionAbout_triggered()
 {
     QMessageBox::about(this, QString::fromUtf8("关于 IMSystem"), 
@@ -204,12 +216,28 @@ void MainWindow::onConnectionEstablished() { qInfo() << "连接已建立"; }
 void MainWindow::onConnectionClosed()
 {
     qInfo() << "连接已关闭";
-    QMessageBox::warning(this, QString::fromUtf8("连接断开"), 
+    if (m_loggingOut) {
+        return;  // 主动退出登录/关闭窗口，不再弹窗
+    }
+    QMessageBox::warning(this, QString::fromUtf8("连接断开"),
         QString::fromUtf8("与服务器的连接已断开，请重新登录。"));
-    QApplication::quit();
+    emit logoutRequested();
+    close();
 }
 
 void MainWindow::onErrorOccurred(const QString &error) { qWarning() << "连接错误:" << error; }
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // 关闭窗口前通知服务器下线（尽力而为，不阻塞关闭流程）
+    if (TcpClient::instance().isConnected() && !m_loggingOut) {
+        m_loggingOut = true;
+        TcpClient::instance().sendJsonMessage(MessageType::REQ_LOGOUT, QJsonObject(),
+                                              m_sequenceCounter.fetch_add(1));
+        TcpClient::instance().disconnectFromServer();
+    }
+    QMainWindow::closeEvent(event);
+}
 
 void MainWindow::requestFriendList()
 {
@@ -239,11 +267,14 @@ void MainWindow::handleLoginResponse(const QJsonObject &body)
 
     // 主窗口收到 RSP_LOGIN 只可能是被其他设备顶下线（正常登录在登录对话框完成）
     if (!success) {
+        m_loggingOut = true;
         QString message = body["message"].toString();
         QMessageBox::warning(this, QString::fromUtf8("提示"),
                              message.isEmpty() ? QString::fromUtf8("登录已失效") : message);
         TcpClient::instance().disconnectFromServer();
-        QApplication::quit();
+        TcpClient::instance().clearToken();
+        emit logoutRequested();
+        close();
     }
 }
 

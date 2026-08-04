@@ -9,6 +9,8 @@
 #include <atomic>
 #include "message.h"
 
+class QCloseEvent;
+
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -25,10 +27,14 @@ public:
     
     void setUsername(const QString &username);
 
+signals:
+    void logoutRequested();
+
 private slots:
     void onFriendClicked(QListWidgetItem *item);
     void onSendClicked();
     void onSearchTextChanged(const QString &text);
+    void on_actionLogout_triggered();
     void on_actionExit_triggered();
     void on_actionAbout_triggered();
     void onAddFriendClicked();
@@ -39,6 +45,7 @@ private slots:
     void onConnectionEstablished();
     void onConnectionClosed();
     void onErrorOccurred(const QString &error);
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void initFriendList();
@@ -69,6 +76,7 @@ private:
     std::atomic<uint32_t> m_sequenceCounter{1};  // 消息序列号计数器
     int m_chatGeneration = 0;     // 当前会话代次，点击好友时自增
     int m_historyGeneration = 0;  // 最近一次历史请求对应的会话代次
+    bool m_loggingOut = false;    // 主动退出登录/关闭窗口时置位，抑制断线弹窗
 };
 
 #endif // MAINWINDOW_H

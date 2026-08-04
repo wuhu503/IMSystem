@@ -329,6 +329,7 @@ QPushButton:pressed {
     <property name="title">
      <string>文件(&amp;F)</string>
     </property>
+    <addaction name="actionLogout"/>
     <addaction name="actionExit"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
@@ -341,6 +342,11 @@ QPushButton:pressed {
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionLogout">
+   <property name="text">
+    <string>退出登录(&amp;L)</string>
+   </property>
+  </action>
   <action name="actionExit">
    <property name="text">
     <string>退出(&amp;Q)</string>
