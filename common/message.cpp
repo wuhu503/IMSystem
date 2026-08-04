@@ -2,6 +2,7 @@
 #include <cstring>
 #include <QDebug>
 Message::Message()
+    : m_valid(true)
 {
     std::memset(&m_header, 0, sizeof(MessageHeader));
     m_header.magic = PROTOCOL_MAGIC;
@@ -47,11 +48,9 @@ QByteArray Message::body() const
     return m_body;
 }
 
-//序列化/反序列化
-
+//序列化
 QByteArray Message::serialize() const
 {
-    // bodyLength 已在 setBody()/setJsonBody() 中维护，无需 const_cast
     int totalSize = HEADER_SIZE + m_body.size();
     QByteArray data(totalSize, '\0');
 
@@ -65,12 +64,12 @@ QByteArray Message::serialize() const
     return data;
 }
 
+//反序列化
 Message Message::deserialize(const QByteArray& data)
 {
-
     if (data.size() < HEADER_SIZE) {
         qWarning() << "Message::deserialize: 数据太短，无法解析 header";
-        return Message();
+        return invalidMessage();
     }
     MessageHeader header;
     std::memcpy(&header, data.constData(), HEADER_SIZE);
@@ -79,14 +78,27 @@ Message Message::deserialize(const QByteArray& data)
         qWarning() << "Message::deserialize: 魔数校验失败，期望"
                    << QString::number(PROTOCOL_MAGIC, 16)
                    << "实际" << QString::number(header.magic, 16);
-        return Message();
+        return invalidMessage();
     }
-    
+
+    if (header.version != PROTOCOL_VERSION) {
+        qWarning() << "Message::deserialize: 协议版本不匹配，期望"
+                   << static_cast<int>(PROTOCOL_VERSION)
+                   << "实际" << static_cast<int>(header.version);
+        return invalidMessage();
+    }
+
+    if (header.bodyLength > MAX_BODY_SIZE) {
+        qWarning() << "Message::deserialize: body 长度超限:"
+                   << header.bodyLength;
+        return invalidMessage();
+    }
+
     if (data.size() < HEADER_SIZE + static_cast<int>(header.bodyLength)) {
         qWarning() << "Message::deserialize: 数据太短，无法解析 body"
                    << "需要" << HEADER_SIZE + header.bodyLength
                    << "实际" << data.size();
-        return Message();
+        return invalidMessage();
     }
     QByteArray body;
     if (header.bodyLength > 0) {
@@ -97,6 +109,20 @@ Message Message::deserialize(const QByteArray& data)
     msg.m_header = header;      // 复制解析出的 header
     msg.m_body = body;          // 设置 body
     
+    return msg;
+}
+
+bool Message::isValid() const
+{
+    return m_valid
+        && m_header.magic == PROTOCOL_MAGIC
+        && m_header.version == PROTOCOL_VERSION;
+}
+
+Message Message::invalidMessage()
+{
+    Message msg;
+    msg.m_valid = false;
     return msg;
 }
 

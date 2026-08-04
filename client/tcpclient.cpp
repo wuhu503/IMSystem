@@ -119,15 +119,34 @@ void TcpClient::onReadyRead()
         MessageHeader header;
         memcpy(&header, m_buffer.constData(), HEADER_SIZE);
 
-        int totalSize = HEADER_SIZE + header.bodyLength;
+        // 协议校验：magic / version / body 长度上限，违规断开并清空缓冲
+        if (header.magic != PROTOCOL_MAGIC ||
+            header.version != PROTOCOL_VERSION ||
+            header.bodyLength > MAX_BODY_SIZE) {
+            qWarning() << "收到非法消息头，断开连接: magic="
+                       << QString::number(header.magic, 16)
+                       << "version=" << static_cast<int>(header.version)
+                       << "bodyLength=" << header.bodyLength;
+            m_buffer.clear();
+            m_socket->disconnectFromHost();
+            return;
+        }
+
+        qint64 totalSize = static_cast<qint64>(HEADER_SIZE) + header.bodyLength;
         if (m_buffer.size() < totalSize) {
             break;
         }
 
-        QByteArray data = m_buffer.left(totalSize);
-        m_buffer.remove(0, totalSize);
+        QByteArray data = m_buffer.left(static_cast<int>(totalSize));
+        m_buffer.remove(0, static_cast<int>(totalSize));
 
         Message msg = Message::deserialize(data);
+        if (!msg.isValid()) {
+            qWarning() << "消息解析失败，断开连接";
+            m_buffer.clear();
+            m_socket->disconnectFromHost();
+            return;
+        }
         emit messageReceived(msg);
     }
 }
