@@ -39,7 +39,9 @@ qt_add_executable(IMServer
     server/service/chatservice.h
     server/service/chatservice.cpp
     server/threading/taskrunner.h
+    server/threading/taskrunner.cpp
     server/threading/dbconnectionhelper.h
+    server/threading/dbconnectionhelper.cpp
 )
 
 target_link_libraries(IMServer PRIVATE common Qt::Core Qt::Network Qt::Sql)
