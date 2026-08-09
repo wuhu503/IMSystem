@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QDateTime>
 #include <atomic>
+#include <QHash>
 #include "message.h"
 
 class QCloseEvent;
@@ -66,6 +67,8 @@ private:
     void handleMessageAckResponse(const QJsonObject &body);
     void handleHistoryResponse(const QJsonObject &body);
     void updateFriendList(const QJsonArray &friends);
+    QListWidgetItem* findFriendItem(const QString &username) const;
+    void refreshFriendItemUnread(QListWidgetItem *item);
     void showAddFriendDialog();
     void showFriendRequestsDialog();
     void showPendingRequestsDialog(const QJsonArray &requests);
@@ -77,6 +80,7 @@ private:
     int m_chatGeneration = 0;     // 当前会话代次，点击好友时自增
     int m_historyGeneration = 0;  // 最近一次历史请求对应的会话代次
     bool m_loggingOut = false;    // 主动退出登录/关闭窗口时置位，抑制断线弹窗
+    QHash<QString, int> m_unreadCounts;  // 好友用户名 -> 未读消息数（用于列表红点）
 };
 
 #endif // MAINWINDOW_H

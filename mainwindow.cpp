@@ -89,6 +89,10 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
     m_historyGeneration = m_chatGeneration;
 
     currentChatFriend = nickname;
+    // 打开会话，清除该好友的未读红点
+    m_unreadCounts.remove(nickname);
+    refreshFriendItemUnread(item);
+
     ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
     ui->messageBrowser->clear();
     ui->sendBtn->setEnabled(true);
@@ -361,6 +365,7 @@ void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
 {
     if (body["success"].toBool()) {
         QMessageBox::information(this, QString::fromUtf8("成功"), body["message"].toString());
+        m_unreadCounts.remove(currentChatFriend);
         currentChatFriend.clear();
         ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
         ui->messageBrowser->clear();
@@ -379,10 +384,17 @@ void MainWindow::handleTextMessageReceived(const QJsonObject &body)
     
     if (sender == currentChatFriend) {
         appendMessage(sender, content, false);
-    } else {
-        QMessageBox::information(this, QString::fromUtf8("新消息"), 
-            QString::fromUtf8("收到 %1 的消息: %2").arg(sender, content.left(50)));
+        return;
     }
+
+    // 非当前会话：累计未读，在好友列表显示红点，不再弹窗打扰
+    QListWidgetItem *item = findFriendItem(sender);
+    if (!item) {
+        qWarning() << "收到未知好友的消息:" << sender;
+        return;
+    }
+    m_unreadCounts[sender] = m_unreadCounts.value(sender, 0) + 1;
+    refreshFriendItemUnread(item);
 }
 
 void MainWindow::handleMessageAckResponse(const QJsonObject &body)
@@ -431,6 +443,7 @@ void MainWindow::updateFriendList(const QJsonArray &friends)
         item->setData(Qt::UserRole + 1, status == 1 ? "在线" : "离线");
         
         QString displayName = nickname.isEmpty() ? username : nickname;
+        item->setData(Qt::UserRole + 2, displayName);
         item->setText(QString("%1 - %2").arg(displayName, status == 1 ? "在线" : "离线"));
         item->setSizeHint(QSize(0, 60));
         
@@ -441,7 +454,38 @@ void MainWindow::updateFriendList(const QJsonArray &friends)
         painter.setFont(QFont("Arial", 16, QFont::Bold));
         painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
         item->setIcon(QIcon(avatar));
+
+        refreshFriendItemUnread(item);
     }
+}
+
+QListWidgetItem* MainWindow::findFriendItem(const QString &username) const
+{
+    for (int i = 0; i < ui->friendList->count(); ++i) {
+        QListWidgetItem *item = ui->friendList->item(i);
+        if (item->data(Qt::UserRole).toString() == username) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+void MainWindow::refreshFriendItemUnread(QListWidgetItem *item)
+{
+    if (!item) return;
+
+    QString username = item->data(Qt::UserRole).toString();
+    QString status = item->data(Qt::UserRole + 1).toString();
+    QString displayName = item->data(Qt::UserRole + 2).toString();
+    if (displayName.isEmpty()) {
+        displayName = username;
+    }
+
+    QString text = QString("%1 - %2").arg(displayName, status);
+    if (m_unreadCounts.value(username, 0) > 0) {
+        text += QString(" <span style='color:#E53935;'>●</span>");
+    }
+    item->setText(text);
 }
 
 void MainWindow::showAddFriendDialog()
