@@ -35,6 +35,8 @@ enum class MessageType : uint16_t {
     RSP_SEARCH_USER     = 3013,
     REQ_PENDING_REQUESTS = 3014,
     RSP_PENDING_REQUESTS = 3015,
+    NTF_FRIEND_REQUEST  = 3016,  // 新好友请求通知（服务端推送）
+    NTF_FRIEND_ACCEPTED = 3017,  // 好友请求被接受通知（服务端推送）
 
     // 聊天消息 (4xxx)
     MSG_TEXT             = 4001,

@@ -2,8 +2,6 @@
 #include <QCryptographicHash>
 #include <QUuid>
 #include <QRandomGenerator>
-#include <QTimeZone>
-
 namespace Utils {
 
 //密码加密
@@ -31,14 +29,6 @@ QString hashPassword(const QString& password, const QString& salt)
     return QString::fromLatin1(hash.toHex());
 }
 
-//验证密码
-bool verifyPassword(const QString& password, const QString& salt, const QString& storedHash)
-{
-
-    QString computedHash = hashPassword(password, salt);
-    return computedHash == storedHash;
-}
-
 //时间工具
 qint64 currentTimestamp()
 {
@@ -50,18 +40,6 @@ qint64 currentTimestampMs()
     return QDateTime::currentMSecsSinceEpoch();
 }
 
-
-QString formatTimestamp(qint64 timestamp, const QString& format)
-{
-
-    QDateTime dateTime = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::utc());
-    return dateTime.toString(format);
-}
-
-QString currentDateTime(const QString& format)
-{
-    return QDateTime::currentDateTime().toString(format);
-}
 
 //UUID 生成
 QString generateUUID()

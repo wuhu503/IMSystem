@@ -44,6 +44,13 @@ void TcpClient::connectToServer(const QString& host,quint16 port)
     m_socket->connectToHost(host,port);
 }
 
+void TcpClient::setServerAddress(const QString& host, quint16 port)
+{
+    // 仅更新目标地址缓存，不触发连接（供注册等流程沿用登录框配置）
+    m_host = host;
+    m_port = port;
+}
+
 void TcpClient::disconnectFromServer()
 {
     if(m_socket->state()!=QAbstractSocket::ConnectedState)
@@ -181,4 +188,3 @@ void TcpClient::onErrorOccurred(QAbstractSocket::SocketError error)
     qDebug() << "连接出错：" << m_socket->errorString();
     emit errorOccurred(m_socket->errorString());
 }
-

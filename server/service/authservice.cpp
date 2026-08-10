@@ -159,6 +159,10 @@ void AuthService::handleLogin(ClientHandler *client, const Message &msg)
                             kickMsg.setJsonBody(kickBody);
                             oldHandler->sendMessage(kickMsg);
 
+                            // 清除旧连接身份，断开前的窗口期请求将无法通过 token 校验
+                            oldHandler->setToken(QString());
+                            oldHandler->setUserId(-1);
+
                             // 先从UserManager移除，再断开连接
                             UserManager::instance().userOffline(userId);
                             oldHandler->socket()->disconnectFromHost();

@@ -2,6 +2,7 @@
 #include "clienthandler.h"
 #include "message.h"
 #include "dbmanager.h"
+#include "usermanager.h"
 #include <QPointer>
 
 FriendService& FriendService::instance()
@@ -111,7 +112,7 @@ void FriendService::checkPendingAndAdd(qint64 userId, qint64 friendId,
 
                     // 第四步：添加好友请求
                     DbManager::instance().addFriendRequestAsync(userId, friendId,
-                        [this, safeClient, friendUsername, sequence](bool success) {
+                        [this, safeClient, userId, friendId, friendUsername, sequence](bool success) {
                             if (!safeClient) return;
 
                             if (success) {
@@ -120,6 +121,17 @@ void FriendService::checkPendingAndAdd(qint64 userId, qint64 friendId,
                                 data["message"] = "好友请求已发送";
                                 sendSuccessResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND, sequence, data);
                                 qInfo() << "好友请求已发送";
+
+                                // 通知目标用户：收到新的好友请求（在线才推送；离线请求已入库）
+                                QPointer<ClientHandler> targetHandler = UserManager::instance().getHandler(friendId);
+                                if (!targetHandler.isNull()) {
+                                    QJsonObject ntfBody;
+                                    ntfBody["message"] = "收到新的好友请求";
+                                    ntfBody["user_id"] = userId;
+                                    Message ntf(MessageType::NTF_FRIEND_REQUEST);
+                                    ntf.setJsonBody(ntfBody);
+                                    targetHandler->sendMessage(ntf);
+                                }
                             } else {
                                 sendErrorResponse(safeClient.data(), MessageType::RSP_ADD_FRIEND,
                                                  sequence, "添加好友失败，请稍后重试");
@@ -186,7 +198,7 @@ void FriendService::handleAcceptFriend(ClientHandler *client, const Message &msg
             
             // 异步接受好友请求
             DbManager::instance().acceptFriendRequestAsync(friendId, userId,
-                [this, safeClient, friendUsername, sequence](bool success) {
+                [this, safeClient, friendId, friendUsername, sequence](bool success) {
                     if (!safeClient) return;
                     
                     if (success) {
@@ -194,6 +206,16 @@ void FriendService::handleAcceptFriend(ClientHandler *client, const Message &msg
                         data["friend_username"] = friendUsername;
                         data["message"] = "已接受好友请求";
                         sendSuccessResponse(safeClient.data(), MessageType::RSP_ACCEPT_FRIEND, sequence, data);
+
+                        // 通知请求方：好友请求已被接受，客户端自动刷新好友列表
+                        QPointer<ClientHandler> requesterHandler = UserManager::instance().getHandler(friendId);
+                        if (!requesterHandler.isNull()) {
+                            QJsonObject ntfBody;
+                            ntfBody["message"] = "对方已接受您的好友请求";
+                            Message ntf(MessageType::NTF_FRIEND_ACCEPTED);
+                            ntf.setJsonBody(ntfBody);
+                            requesterHandler->sendMessage(ntf);
+                        }
                     } else {
                         sendErrorResponse(safeClient.data(), MessageType::RSP_ACCEPT_FRIEND, 
                                          sequence, "接受好友请求失败");

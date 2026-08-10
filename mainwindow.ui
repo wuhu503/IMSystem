@@ -121,6 +121,26 @@ QPushButton:hover {
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QPushButton" name="searchUserBtn">
+            <property name="text">
+             <string>搜索用户</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px;
+    font-size: 12px;
+}
+QPushButton:hover {
+    background-color: #43A047;
+}</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
         <item>

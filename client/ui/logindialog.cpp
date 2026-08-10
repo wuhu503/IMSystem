@@ -82,6 +82,15 @@ void LoginDialog::on_registerBtn_clicked()
 {
     // 断开 TcpClient 信号，避免两个对话框同时响应
     disconnect(&TcpClient::instance(), nullptr, this, nullptr);
+
+    // 把登录框填写的服务器地址同步给 TcpClient，注册对话框将沿用
+    QString server = ui->serverEdit->text().trimmed();
+    QString portStr = ui->portEdit->text().trimmed();
+    bool portOk = false;
+    quint16 port = portStr.toUShort(&portOk);
+    if (!server.isEmpty() && portOk && port > 0) {
+        TcpClient::instance().setServerAddress(server, port);
+    }
     
     RegisterDialog registerDialog(this);
     connect(&registerDialog, &RegisterDialog::registerSuccess,

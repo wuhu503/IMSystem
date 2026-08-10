@@ -12,6 +12,7 @@ class TcpClient:public QObject
 public:
     static TcpClient& instance();
     void connectToServer(const QString& host,quint16 port);
+    void setServerAddress(const QString& host, quint16 port);
 
     void disconnectFromServer();
 

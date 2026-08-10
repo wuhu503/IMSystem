@@ -35,6 +35,7 @@ private slots:
     void onFriendClicked(QListWidgetItem *item);
     void onSendClicked();
     void onSearchTextChanged(const QString &text);
+    void on_searchUserBtn_clicked();
     void on_actionLogout_triggered();
     void on_actionExit_triggered();
     void on_actionAbout_triggered();
@@ -63,12 +64,16 @@ private:
     void handleAcceptFriendResponse(const QJsonObject &body);
     void handleRejectFriendResponse(const QJsonObject &body);
     void handleDeleteFriendResponse(const QJsonObject &body);
+    void handleFriendRequestNotification(const QJsonObject &body);
+    void handleFriendAcceptedNotification(const QJsonObject &body);
     void handleTextMessageReceived(const QJsonObject &body);
-    void handleMessageAckResponse(const QJsonObject &body);
+    void handleMessageAckResponse(uint32_t sequence, const QJsonObject &body);
     void handleHistoryResponse(const QJsonObject &body);
     void updateFriendList(const QJsonArray &friends);
     QListWidgetItem* findFriendItem(const QString &username) const;
     void refreshFriendItemUnread(QListWidgetItem *item);
+    void setFriendItemAvatar(QListWidgetItem *item, const QString &displayName, bool unread);
+    void updateFriendRequestButton();
     void showAddFriendDialog();
     void showFriendRequestsDialog();
     void showPendingRequestsDialog(const QJsonArray &requests);
@@ -81,6 +86,9 @@ private:
     int m_historyGeneration = 0;  // 最近一次历史请求对应的会话代次
     bool m_loggingOut = false;    // 主动退出登录/关闭窗口时置位，抑制断线弹窗
     QHash<QString, int> m_unreadCounts;  // 好友用户名 -> 未读消息数（用于列表红点）
+    int m_unreadFriendRequests = 0;      // 未查看的新好友请求数（用于按钮红点）
+    bool m_silentPendingFetch = false;   // 登录后静默拉取好友请求（只亮红点不弹列表）
+    QHash<uint32_t, QString> m_pendingMessages;  // 待确认消息：sequence -> 内容
 };
 
 #endif // MAINWINDOW_H

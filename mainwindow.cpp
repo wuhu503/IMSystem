@@ -70,6 +70,10 @@ void MainWindow::setUsername(const QString &username)
     ui->userAccountLabel->setText(QString::fromUtf8("当前用户：%1").arg(username));
     setWindowTitle(QString::fromUtf8("IMSystem - %1").arg(username));
     requestFriendList();
+
+    // 登录后静默拉取一次好友请求，用于点亮红点（不弹列表）
+    m_silentPendingFetch = true;
+    requestPendingFriendRequests();
 }
 
 void MainWindow::initFriendList()
@@ -114,10 +118,12 @@ void MainWindow::onSendClicked()
     QJsonObject body;
     body["receiver"] = currentChatFriend;
     body["content"] = message;
-    TcpClient::instance().sendJsonMessage(MessageType::MSG_TEXT, body,
-                                          m_sequenceCounter.fetch_add(1));
-    
-    appendMessage(m_username, message, true);
+
+    // 等服务器 ACK 确认后再上屏，避免“发送失败但气泡还在”
+    uint32_t seq = m_sequenceCounter.fetch_add(1);
+    m_pendingMessages.insert(seq, message);
+    TcpClient::instance().sendJsonMessage(MessageType::MSG_TEXT, body, seq);
+
     ui->messageInput->clear();
 }
 
@@ -137,6 +143,7 @@ void MainWindow::on_actionLogout_triggered()
 {
     // 通知服务器下线并断开连接，随后返回登录界面
     m_loggingOut = true;
+    m_pendingMessages.clear();
     TcpClient::instance().sendJsonMessage(MessageType::REQ_LOGOUT, QJsonObject(),
                                           m_sequenceCounter.fetch_add(1));
     TcpClient::instance().disconnectFromServer();
@@ -153,6 +160,20 @@ void MainWindow::on_actionAbout_triggered()
 void MainWindow::onAddFriendClicked() { showAddFriendDialog(); }
 void MainWindow::onRefreshFriendsClicked() { requestFriendList(); }
 void MainWindow::onFriendRequestsClicked() { showFriendRequestsDialog(); }
+
+void MainWindow::on_searchUserBtn_clicked()
+{
+    bool ok = false;
+    QString keyword = QInputDialog::getText(this, QString::fromUtf8("搜索用户"),
+                                            QString::fromUtf8("请输入用户名关键字："),
+                                            QLineEdit::Normal, QString(), &ok);
+    if (!ok || keyword.trimmed().isEmpty()) return;
+
+    QJsonObject body;
+    body["keyword"] = keyword.trimmed();
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_SEARCH_USER, body,
+                                          m_sequenceCounter.fetch_add(1));
+}
 
 void MainWindow::onDeleteFriendClicked()
 {
@@ -198,11 +219,17 @@ void MainWindow::onMessageReceived(const Message &msg)
     case MessageType::RSP_PENDING_REQUESTS:
         handlePendingRequestsResponse(msg.jsonBody());
         break;
+    case MessageType::NTF_FRIEND_REQUEST:
+        handleFriendRequestNotification(msg.jsonBody());
+        break;
+    case MessageType::NTF_FRIEND_ACCEPTED:
+        handleFriendAcceptedNotification(msg.jsonBody());
+        break;
     case MessageType::MSG_TEXT:
         handleTextMessageReceived(msg.jsonBody());
         break;
     case MessageType::MSG_ACK:
-        handleMessageAckResponse(msg.jsonBody());
+        handleMessageAckResponse(msg.sequence(), msg.jsonBody());
         break;
     case MessageType::MSG_HISTORY:
         handleHistoryResponse(msg.jsonBody());
@@ -220,6 +247,7 @@ void MainWindow::onConnectionEstablished() { qInfo() << "连接已建立"; }
 void MainWindow::onConnectionClosed()
 {
     qInfo() << "连接已关闭";
+    m_pendingMessages.clear();
     if (m_loggingOut) {
         return;  // 主动退出登录/关闭窗口，不再弹窗
     }
@@ -303,6 +331,14 @@ void MainWindow::handlePendingRequestsResponse(const QJsonObject &body)
                              message.isEmpty() ? QString::fromUtf8("获取好友请求失败") : message);
         return;
     }
+
+    if (m_silentPendingFetch) {
+        // 静默模式：只更新按钮红点，不弹对话框
+        m_silentPendingFetch = false;
+        m_unreadFriendRequests = body["requests"].toArray().size();
+        updateFriendRequestButton();
+        return;
+    }
     showPendingRequestsDialog(body["requests"].toArray());
 }
 
@@ -329,17 +365,32 @@ void MainWindow::handleSearchUserResponse(const QJsonObject &body)
         return;
     }
     
-    QString resultText;
+    // 展示搜索结果，选中后直接发送添加好友请求
+    QStringList items;
+    QStringList usernames;
     for (const QJsonValue &value : users) {
         QJsonObject user = value.toObject();
         QString username = user["username"].toString();
         QString nickname = user["nickname"].toString();
         int status = user["status"].toInt();
-        resultText += QString("%1 (%2) - %3\n")
-            .arg(username, nickname.isEmpty() ? username : nickname)
-            .arg(status == 1 ? "在线" : "离线");
+        QString display = nickname.isEmpty() ? username : nickname;
+        items << QString("%1 (%2) - %3").arg(display, username, status == 1 ? "在线" : "离线");
+        usernames << username;
     }
-    QMessageBox::information(this, QString::fromUtf8("搜索结果"), resultText);
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(this, QString::fromUtf8("搜索结果"),
+                                             QString::fromUtf8("选择要添加的用户："),
+                                             items, 0, false, &ok);
+    if (!ok || selected.isEmpty()) return;
+
+    int index = items.indexOf(selected);
+    if (index < 0 || index >= usernames.size()) return;
+
+    QJsonObject reqBody;
+    reqBody["username"] = usernames[index];
+    TcpClient::instance().sendJsonMessage(MessageType::REQ_ADD_FRIEND, reqBody,
+                                          m_sequenceCounter.fetch_add(1));
 }
 
 void MainWindow::handleAcceptFriendResponse(const QJsonObject &body)
@@ -377,6 +428,21 @@ void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
     }
 }
 
+void MainWindow::handleFriendRequestNotification(const QJsonObject &body)
+{
+    Q_UNUSED(body);
+    // 收到新的好友请求推送：好友请求按钮点亮红点
+    ++m_unreadFriendRequests;
+    updateFriendRequestButton();
+}
+
+void MainWindow::handleFriendAcceptedNotification(const QJsonObject &body)
+{
+    Q_UNUSED(body);
+    // 对方已接受好友请求：自动刷新好友列表
+    requestFriendList();
+}
+
 void MainWindow::handleTextMessageReceived(const QJsonObject &body)
 {
     QString sender = body["sender"].toString();
@@ -397,10 +463,18 @@ void MainWindow::handleTextMessageReceived(const QJsonObject &body)
     refreshFriendItemUnread(item);
 }
 
-void MainWindow::handleMessageAckResponse(const QJsonObject &body)
+void MainWindow::handleMessageAckResponse(uint32_t sequence, const QJsonObject &body)
 {
+    QString content = m_pendingMessages.take(sequence);
+
     if (!body["success"].toBool()) {
         QMessageBox::warning(this, QString::fromUtf8("发送失败"), body["message"].toString());
+        return;
+    }
+
+    // 确认成功后再上屏
+    if (!content.isEmpty()) {
+        appendMessage(m_username, content, true);
     }
 }
 
@@ -444,16 +518,7 @@ void MainWindow::updateFriendList(const QJsonArray &friends)
         
         QString displayName = nickname.isEmpty() ? username : nickname;
         item->setData(Qt::UserRole + 2, displayName);
-        item->setText(QString("%1 - %2").arg(displayName, status == 1 ? "在线" : "离线"));
         item->setSizeHint(QSize(0, 60));
-        
-        QPixmap avatar(40, 40);
-        avatar.fill(QColor(100, 149, 237));
-        QPainter painter(&avatar);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont("Arial", 16, QFont::Bold));
-        painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
-        item->setIcon(QIcon(avatar));
 
         refreshFriendItemUnread(item);
     }
@@ -481,11 +546,51 @@ void MainWindow::refreshFriendItemUnread(QListWidgetItem *item)
         displayName = username;
     }
 
-    QString text = QString("%1 - %2").arg(displayName, status);
-    if (m_unreadCounts.value(username, 0) > 0) {
-        text += QString(" <span style='color:#E53935;'>●</span>");
+    bool hasUnread = m_unreadCounts.value(username, 0) > 0;
+    item->setText(QString("%1 - %2").arg(displayName, status));
+    // 红点绘制在头像右下角徽标上，避免在文本里拼 HTML（QListWidgetItem 不支持富文本）
+    setFriendItemAvatar(item, displayName, hasUnread);
+}
+
+void MainWindow::setFriendItemAvatar(QListWidgetItem *item, const QString &displayName, bool unread)
+{
+    QPixmap avatar(40, 40);
+    avatar.fill(QColor(100, 149, 237));
+
+    {
+        QPainter painter(&avatar);
+        painter.setPen(Qt::white);
+        painter.setFont(QFont("Arial", 16, QFont::Bold));
+        painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
     }
-    item->setText(text);
+
+    if (unread) {
+        // 未读红点徽标：头像右下角的红色圆点
+        QPainter painter(&avatar);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(Qt::white, 1.5));
+        painter.setBrush(QColor(0xE5, 0x39, 0x35));
+        painter.drawEllipse(QRectF(25.5, 25.5, 12, 12));
+    }
+
+    item->setIcon(QIcon(avatar));
+}
+
+void MainWindow::updateFriendRequestButton()
+{
+    if (m_unreadFriendRequests > 0) {
+        QPixmap dot(12, 12);
+        dot.fill(Qt::transparent);
+        QPainter painter(&dot);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0xE5, 0x39, 0x35));
+        painter.drawEllipse(0, 0, 12, 12);
+        ui->friendRequestsBtn->setIcon(QIcon(dot));
+        ui->friendRequestsBtn->setIconSize(QSize(12, 12));
+    } else {
+        ui->friendRequestsBtn->setIcon(QIcon());
+    }
 }
 
 void MainWindow::showAddFriendDialog()
@@ -504,7 +609,14 @@ void MainWindow::showAddFriendDialog()
     }
 }
 
-void MainWindow::showFriendRequestsDialog() { requestPendingFriendRequests(); }
+void MainWindow::showFriendRequestsDialog()
+{
+    // 手动打开列表即视为已查看：清除静默模式与红点
+    m_silentPendingFetch = false;
+    m_unreadFriendRequests = 0;
+    updateFriendRequestButton();
+    requestPendingFriendRequests();
+}
 
 void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
 {
