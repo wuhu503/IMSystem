@@ -5,43 +5,63 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Sql)
 
 qt_standard_project_setup()
 
+# 打开常见告警，避免回归（当前代码在 MinGW 下为 0 告警）
+if (MSVC)
+    add_compile_options(/W4 /permissive-)
+else()
+    add_compile_options(-Wall -Wextra)
+endif()
+
 # ========== 公共模块（静态库） ==========
 add_library(common STATIC
-    common/protocol.h
-    common/message.h
-    common/message.cpp
-    common/utils.h
-    common/utils.cpp
+    common/Protocol.h
+    common/Constants.h
+    common/Message.h
+    common/Message.cpp
+    common/Utils.h
+    common/Utils.cpp
 )
 
-target_link_libraries(common PUBLIC Qt::Core)
+# QPasswordDigestor（PBKDF2）位于 QtNetwork 模块
+target_link_libraries(common PUBLIC Qt::Core Qt::Network)
 target_include_directories(common PUBLIC ${CMAKE_SOURCE_DIR}/common)
 
 # ========== 服务端可执行文件 ==========
 qt_add_executable(IMServer
     server/main.cpp
-    server/tcpserver.h
-    server/tcpserver.cpp
-    server/clienthandler.h
-    server/clienthandler.cpp
-    server/usermanager.h
-    server/usermanager.cpp
-    server/database/dbmanager.h
-    server/database/dbmanager.cpp
-    server/service/authservice.h
-    server/service/authservice.cpp
-    server/service/friendservice.h
-    server/service/friendservice.cpp
-    server/service/chatservice.h
-    server/service/chatservice.cpp
-    server/threading/taskrunner.h
-    server/threading/taskrunner.cpp
-    server/threading/dbconnectionhelper.h
-    server/threading/dbconnectionhelper.cpp
+    server/TcpServer.h
+    server/TcpServer.cpp
+    server/ClientHandler.h
+    server/ClientHandler.cpp
+    server/UserManager.h
+    server/UserManager.cpp
+    server/database/DbManager.h
+    server/database/DbManager.cpp
+    server/database/DbTypes.h
+    server/database/UserRepository.h
+    server/database/UserRepository.cpp
+    server/database/FriendRepository.h
+    server/database/FriendRepository.cpp
+    server/database/MessageRepository.h
+    server/database/MessageRepository.cpp
+    server/service/AuthService.h
+    server/service/AuthService.cpp
+    server/service/FriendService.h
+    server/service/FriendService.cpp
+    server/service/ChatService.h
+    server/service/ChatService.cpp
+    server/service/Reply.h
+    server/threading/TaskRunner.h
+    server/threading/TaskRunner.cpp
+    server/threading/DbConnectionHelper.h
+    server/threading/DbConnectionHelper.cpp
 )
 
 target_link_libraries(IMServer PRIVATE common Qt::Core Qt::Network Qt::Sql)
@@ -64,17 +84,19 @@ add_custom_command(TARGET IMServer POST_BUILD
 qt_add_executable(IMClient
     WIN32 MACOSX_BUNDLE
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
-    client/tcpclient.h
-    client/tcpclient.cpp
-    client/ui/logindialog.h
-    client/ui/logindialog.cpp
-    client/ui/logindialog.ui
-    client/ui/registerdialog.h
-    client/ui/registerdialog.cpp
-    client/ui/registerdialog.ui
+    MainWindow.cpp
+    MainWindow.h
+    MainWindow.ui
+    client/TcpClient.h
+    client/TcpClient.cpp
+    client/ChatSession.h
+    client/ChatSession.cpp
+    client/ui/LoginDialog.h
+    client/ui/LoginDialog.cpp
+    client/ui/LoginDialog.ui
+    client/ui/RegisterDialog.h
+    client/ui/RegisterDialog.cpp
+    client/ui/RegisterDialog.ui
 )
 
 target_link_libraries(IMClient PRIVATE common Qt::Core Qt::Widgets Qt::Network)
@@ -91,9 +113,21 @@ install(TARGETS IMClient IMServer
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
+# 服务端启动时需要读取建表脚本
+install(FILES server/database/init.sql
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
 qt_generate_deploy_app_script(
     TARGET IMClient
     OUTPUT_SCRIPT deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+qt_generate_deploy_app_script(
+    TARGET IMServer
+    OUTPUT_SCRIPT deploy_script_server
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${deploy_script_server})

@@ -34,9 +34,10 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_id INTEGER NOT NULL,             -- 发送者ID
     receiver_id INTEGER NOT NULL,           -- 接收者ID（用户ID或群组ID）
     type INTEGER NOT NULL,                  -- 消息类型（MessageType枚举值）
-    content TEXT NOT NULL,                  -- 消息内容（JSON格式）
+    content TEXT NOT NULL,                  -- 消息内容（文本）
     timestamp INTEGER NOT NULL,             -- 消息时间戳
-    is_read INTEGER DEFAULT 0,             -- 是否已读：0未读，1已读
+    is_read INTEGER DEFAULT 0,              -- 是否已读：0未读，1已读（由客户端已读回执更新）
+    delivered INTEGER DEFAULT 0,            -- 是否已投递给接收者：0未投递，1已投递（离线消息补推依据）
     FOREIGN KEY (sender_id) REFERENCES users(id),
     FOREIGN KEY (receiver_id) REFERENCES users(id)
 );
@@ -57,3 +58,5 @@ CREATE INDEX IF NOT EXISTS idx_friendships_friend ON friendships(friend_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+-- 聊天历史按 (发送者, 接收者, 时间) 检索，复合索引可让 UNION 查询走索引
+CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id, receiver_id, timestamp);
