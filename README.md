@@ -59,7 +59,10 @@ IMSystem/
 ├── client/                           # 客户端
 │   ├── TcpClient.h/cpp               # 传输层：socket、粘包拆包、token 携带
 │   ├── ChatSession.h/cpp             # 会话层：登录注册、序列号、心跳、回执、报文→语义信号
+│   ├── FriendStore.h/cpp             # 状态层：好友列表与未读数（不依赖任何 widget）
 │   └── ui/
+│       ├── UiKit.h/cpp               # 公共绘制：头像、红点、聊天气泡
+│       ├── ClientDialogs.h/cpp       # 搜索结果选择、好友请求对话框
 │       ├── LoginDialog.h/cpp/ui      # 登录界面
 │       └── RegisterDialog.h/cpp/ui   # 注册界面
 │
@@ -91,7 +94,7 @@ IMSystem/
 ### 分层约定
 
 ```
-客户端：UI（对话框 / 主窗口） → ChatSession（会话·协议） → TcpClient（传输） → 网络
+客户端：UI（MainWindow / 对话框） → FriendStore（好友与未读状态） + ChatSession（会话·协议） → TcpClient（传输） → 网络
 服务端：ClientHandler（连接） → Service（业务） → Repository（数据） → DbManager（库）/ SQLite
 ```
 

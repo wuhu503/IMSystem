@@ -5,7 +5,8 @@
 #include <QListWidgetItem>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QHash>
+
+#include "FriendStore.h"
 
 class QCloseEvent;
 
@@ -45,10 +46,13 @@ private slots:
     void onErrorOccurred(const QString &error);
     void closeEvent(QCloseEvent *event) override;
 
+    // FriendStore 的通知：好友列表 / 未读变化后重画
+    void renderFriendList();
+    void renderUnreadBadge(const QString &username);
+
 private:
     void initFriendList();
-    void appendMessage(const QString &nickname, const QString &message, bool isSelf,
-                       qint64 timestamp = 0);
+    void appendMessage(const QString &text, bool isSelf, qint64 timestamp = 0);
 
     // 会话层信号的处理：只做展示与界面状态维护
     void handleKickedOffline(const QString &message);
@@ -72,22 +76,20 @@ private:
 
     void applyFriendFilter();
     void resetChatView();
-    void updateFriendList(const QJsonArray &friends);
+    void renderChatHeader();
     QListWidgetItem* findFriendItem(const QString &username) const;
-    void refreshFriendItemUnread(QListWidgetItem *item);
-    void setFriendItemAvatar(QListWidgetItem *item, const QString &displayName, bool unread);
     void updateFriendRequestButton();
     void showAddFriendDialog();
     void showFriendRequestsDialog();
-    void showPendingRequestsDialog(const QJsonArray &requests);
 
     Ui::MainWindow *ui;
-    QString currentChatFriend;
+    FriendStore m_friends;        // 好友列表与未读数（不再塞进 QListWidgetItem 的 UserRole）
+    QString currentChatFriend;    // 当前会话好友的用户名
     QString m_username;
     bool m_loggingOut = false;    // 主动退出登录/关闭窗口时置位，抑制断线弹窗
-    QHash<QString, int> m_unreadCounts;  // 好友用户名 -> 未读消息数（用于列表红点）
     int m_unreadFriendRequests = 0;      // 未查看的新好友请求数（用于按钮红点）
     bool m_silentPendingFetch = false;   // 登录后静默拉取好友请求（只亮红点不弹列表）
+    bool m_friendListLoaded = false;     // 本轮登录是否已经拿到过好友列表
 };
 
 #endif // MAINWINDOW_H

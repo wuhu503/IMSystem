@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QHash>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -52,6 +53,18 @@ public:
     bool sendText(const QString &receiver, const QString &content);
     void requestHistory(const QString &friendUsername, int limit, int offset);
     void markConversationRead(const QString &friendUsername);
+
+    // 界面未就绪期间收到的文本消息（见 takePendingTexts 注释）
+    struct IncomingText {
+        QString sender;
+        QString content;
+        qint64  timestamp = 0;
+    };
+
+    // 登录成功那一刻服务端会立刻补推离线消息，而这时主窗口还没构造
+    // （登录对话框还停在“登录成功”提示上）。这期间到达的消息先缓存在会话层，
+    // 由界面就绪后取走并补渲染，否则消息既不上屏也不计入未读。
+    QList<IncomingText> takePendingTexts();
 
 signals:
     void connected();
@@ -109,6 +122,7 @@ private:
     std::atomic<uint32_t> m_sequence{1};
     bool m_loggedIn = false;
     QHash<uint32_t, PendingText> m_pendingTexts;  // 已发出、等待服务端确认的文本
+    QList<IncomingText> m_pendingIncoming;        // 界面未就绪时暂存的入站文本
     uint32_t m_historyRequestSeq = 0;             // 最近一次历史请求，用于丢弃过期响应
     QTimer *m_heartbeatTimer = nullptr;
     QTimer *m_readReceiptTimer = nullptr;

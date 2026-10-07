@@ -91,6 +91,12 @@ qt_add_executable(IMClient
     client/TcpClient.cpp
     client/ChatSession.h
     client/ChatSession.cpp
+    client/FriendStore.h
+    client/FriendStore.cpp
+    client/ui/UiKit.h
+    client/ui/UiKit.cpp
+    client/ui/ClientDialogs.h
+    client/ui/ClientDialogs.cpp
     client/ui/LoginDialog.h
     client/ui/LoginDialog.cpp
     client/ui/LoginDialog.ui

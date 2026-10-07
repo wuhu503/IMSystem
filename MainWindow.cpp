@@ -1,26 +1,28 @@
 ﻿#include "MainWindow.h"
 #include "ui_MainWindow.h"
 #include "ChatSession.h"
+#include "ClientDialogs.h"
 #include "Message.h"
 #include "Protocol.h"
 #include "Constants.h"
+#include "UiKit.h"
 #include <QMessageBox>
 #include <QTime>
-#include <QPainter>
 #include <QScrollBar>
-#include <QTimer>
+#include <QTextBlockFormat>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QJsonDocument>
 #include <QDebug>
-#include <QDialog>
 #include <QCloseEvent>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QListWidget>
 #include <QPushButton>
 #include <QLabel>
+#include <QDateTime>
+#include <QIcon>
+#include <QLineEdit>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -45,6 +47,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->deleteFriendBtn, &QPushButton::clicked, 
             this, &MainWindow::onDeleteFriendClicked);
     
+    // 好友与未读状态集中在 FriendStore，界面只做渲染
+    connect(&m_friends, &FriendStore::listChanged, this, &MainWindow::renderFriendList);
+    connect(&m_friends, &FriendStore::unreadChanged, this, &MainWindow::renderUnreadBadge);
+
     // 只连会话层的语义信号，协议细节（序列号、心跳、回执）都在 ChatSession 里
     ChatSession &session = ChatSession::instance();
     connect(&session, &ChatSession::connected, this, &MainWindow::onConnectionEstablished);
@@ -85,8 +91,25 @@ MainWindow::~MainWindow()
 void MainWindow::setUsername(const QString &username)
 {
     m_username = username;
+
+    // 新会话：先清掉上一轮登录留下的好友与红点，避免旧数据串到新账号
+    m_unreadFriendRequests = 0;
+    m_friendListLoaded = false;
+    updateFriendRequestButton();
+    resetChatView();
+    m_friends.setFriends(QJsonArray());
+
     ui->userAccountLabel->setText(QString::fromUtf8("当前用户：%1").arg(username));
     setWindowTitle(QString::fromUtf8("IMSystem - %1").arg(username));
+
+    // 登录成功的那一刻服务端就会补推离线消息，而这时主窗口还没构造，
+    // 会话层先把它们缓存住了，这里取出来补渲染——否则消息既不上屏也不计未读
+    const QList<ChatSession::IncomingText> pending =
+        ChatSession::instance().takePendingTexts();
+    for (const ChatSession::IncomingText &text : pending) {
+        handleTextReceived(text.sender, text.content, text.timestamp);
+    }
+
     ChatSession::instance().requestFriendList();
 
     // 登录后静默拉取一次好友请求，用于点亮红点（不弹列表）
@@ -104,21 +127,20 @@ void MainWindow::onFriendClicked(QListWidgetItem *item)
 {
     if (!item) return;
     
-    const QString nickname = item->data(Qt::UserRole).toString();
-    const QString status = item->data(Qt::UserRole + 1).toString();
+    const QString username = item->data(Qt::UserRole).toString();
+    if (username.isEmpty()) return;
 
-    currentChatFriend = nickname;
-    // 打开会话，清除该好友的未读红点
-    m_unreadCounts.remove(nickname);
-    refreshFriendItemUnread(item);
+    currentChatFriend = username;
+    // 打开会话即清红点（未读变化会顺带重画该项）
+    m_friends.clearUnread(username);
 
-    ui->chatTitleLabel->setText(QString("%1 (%2)").arg(nickname, status));
     ui->messageBrowser->clear();
     ui->sendBtn->setEnabled(true);
     ui->messageInput->setEnabled(true);
+    renderChatHeader();
     
-    ChatSession::instance().requestHistory(nickname, IMConstants::kDefaultHistoryLimit, 0);
-    ChatSession::instance().markConversationRead(nickname);
+    ChatSession::instance().requestHistory(username, IMConstants::kDefaultHistoryLimit, 0);
+    ChatSession::instance().markConversationRead(username);
 }
 
 void MainWindow::onSendClicked()
@@ -252,7 +274,8 @@ void MainWindow::handleFriendListResponse(const QJsonObject &body)
                              message.isEmpty() ? QString::fromUtf8("获取好友列表失败") : message);
         return;
     }
-    updateFriendList(body["friends"].toArray());
+    m_friendListLoaded = true;
+    m_friends.setFriends(body["friends"].toArray());
 }
 
 void MainWindow::handlePendingRequestsResponse(const QJsonObject &body)
@@ -265,14 +288,20 @@ void MainWindow::handlePendingRequestsResponse(const QJsonObject &body)
         return;
     }
 
+    const QJsonArray requests = body["requests"].toArray();
+
     if (m_silentPendingFetch) {
         // 静默模式：只更新按钮红点，不弹对话框
         m_silentPendingFetch = false;
-        m_unreadFriendRequests = body["requests"].toArray().size();
+        m_unreadFriendRequests = requests.size();
         updateFriendRequestButton();
         return;
     }
-    showPendingRequestsDialog(body["requests"].toArray());
+
+    // 非静默说明是用户主动打开的，视为已查看：红点清零并弹出请求列表
+    m_unreadFriendRequests = 0;
+    updateFriendRequestButton();
+    ClientDialogs::showFriendRequests(requests, this);
 }
 
 void MainWindow::handleAddFriendResponse(const QJsonObject &body)
@@ -298,29 +327,11 @@ void MainWindow::handleSearchUserResponse(const QJsonObject &body)
         return;
     }
     
-    // 展示搜索结果，选中后直接发送添加好友请求
-    QStringList items;
-    QStringList usernames;
-    for (const QJsonValue &value : users) {
-        QJsonObject user = value.toObject();
-        QString username = user["username"].toString();
-        QString nickname = user["nickname"].toString();
-        int status = user["status"].toInt();
-        QString display = nickname.isEmpty() ? username : nickname;
-        items << QString("%1 (%2) - %3").arg(display, username, status == 1 ? "在线" : "离线");
-        usernames << username;
+    // 结果展示与选择逻辑在 ClientDialogs 里，这里只负责把选中的用户发出去
+    const QString username = ClientDialogs::pickSearchResult(users, this);
+    if (!username.isEmpty()) {
+        ChatSession::instance().addFriend(username);
     }
-
-    bool ok = false;
-    QString selected = QInputDialog::getItem(this, QString::fromUtf8("搜索结果"),
-                                             QString::fromUtf8("选择要添加的用户："),
-                                             items, 0, false, &ok);
-    if (!ok || selected.isEmpty()) return;
-
-    int index = items.indexOf(selected);
-    if (index < 0 || index >= usernames.size()) return;
-
-    ChatSession::instance().addFriend(usernames[index]);
 }
 
 void MainWindow::handleAcceptFriendResponse(const QJsonObject &body)
@@ -346,8 +357,9 @@ void MainWindow::handleDeleteFriendResponse(const QJsonObject &body)
 {
     if (body["success"].toBool()) {
         QMessageBox::information(this, QString::fromUtf8("成功"), body["message"].toString());
-        m_unreadCounts.remove(currentChatFriend);
+        const QString removed = currentChatFriend;
         resetChatView();
+        m_friends.clearUnread(removed);
         ChatSession::instance().requestFriendList();
     } else {
         QMessageBox::warning(this, QString::fromUtf8("失败"), body["message"].toString());
@@ -379,9 +391,9 @@ void MainWindow::handleFriendRemovedNotification(const QString &username)
 {
     // 被解除的正好是当前会话：先关掉会话再刷新列表
     if (!username.isEmpty() && username == currentChatFriend) {
-        m_unreadCounts.remove(username);
         resetChatView();
     }
+    m_friends.clearUnread(username);
 
     QMessageBox::information(this, QString::fromUtf8("好友关系变更"),
         QString::fromUtf8("对方解除了与您的好友关系%1")
@@ -392,31 +404,34 @@ void MainWindow::handleFriendRemovedNotification(const QString &username)
 
 void MainWindow::handleTextReceived(const QString &sender, const QString &content, qint64 timestamp)
 {
+    if (sender.isEmpty()) {
+        return;
+    }
+
     if (sender == currentChatFriend) {
-        appendMessage(sender, content, false, timestamp);
+        appendMessage(content, false, timestamp);
         // 消息已在当前会话展示，上报已读（会话层内部去抖）
         ChatSession::instance().markConversationRead(sender);
         return;
     }
 
-    // 非当前会话：累计未读，在好友列表显示红点，不再弹窗打扰
-    QListWidgetItem *item = findFriendItem(sender);
-    if (!item) {
-        // 好友列表可能还没刷新（例如刚接受好友请求），先刷新一次；
-        // 该消息已在服务端入库，打开会话后仍能从历史记录里看到
+    // 非当前会话：一律先记未读——即使好友列表还没就绪也照记，
+    // 红点由 FriendStore 统一渲染，列表到齐后自然补齐，不再依赖"此刻 item 是否存在"
+    m_friends.addUnread(sender);
+
+    if (m_friendListLoaded && !m_friends.contains(sender)) {
+        // 列表已经加载过却没有这个人（例如刚接受好友请求），拉一次列表补上；
+        // 列表还没加载时不做任何事——setUsername 里那次请求已经带着未读数一起刷新了
         qWarning() << "收到未知好友的消息，已请求刷新好友列表:" << sender;
         ChatSession::instance().requestFriendList();
-        return;
     }
-    m_unreadCounts[sender] = m_unreadCounts.value(sender, 0) + 1;
-    refreshFriendItemUnread(item);
 }
 
 void MainWindow::handleTextSendSucceeded(const QString &receiver, const QString &content)
 {
     // 确认成功后再上屏；只有目标会话仍是当前会话才显示，避免消息串到别的聊天窗口
     if (receiver == currentChatFriend && !currentChatFriend.isEmpty()) {
-        appendMessage(m_username, content, true);
+        appendMessage(content, true);
     }
 }
 
@@ -432,14 +447,18 @@ void MainWindow::handleTextSendFailed(const QString &receiver, const QString &co
     
 void MainWindow::handleHistoryReceived(const QString &friendUsername, const QJsonArray &messages)
 {
-    Q_UNUSED(friendUsername);
+    // 会话层已按序列号丢弃过期响应，这里再兜一层：只渲染当前会话的记录，
+    // 避免切换会话后旧响应把别人的聊天记录画进来
+    if (friendUsername != currentChatFriend) {
+        return;
+    }
+
+    // 服务端按时间倒序返回，反向追加即为正序
     for (int i = messages.size() - 1; i >= 0; --i) {
-        QJsonObject msgObj = messages[i].toObject();
-        QString senderName = msgObj["sender_name"].toString();
-        QString content = msgObj["content"].toString();
-        qint64 timestamp = msgObj["timestamp"].toVariant().toLongLong();
-        bool isSelf = (senderName == m_username);
-        appendMessage(senderName, content, isSelf, timestamp);
+        const QJsonObject msgObj = messages.at(i).toObject();
+        appendMessage(msgObj["content"].toString(),
+                      msgObj["sender_name"].toString() == m_username,
+                      msgObj["timestamp"].toVariant().toLongLong());
     }
 }
 
@@ -451,29 +470,52 @@ void MainWindow::handleHistoryFailed(const QString &friendUsername, const QStrin
                          message.isEmpty() ? QString::fromUtf8("获取聊天记录失败") : message);
 }
 
-void MainWindow::updateFriendList(const QJsonArray &friends)
+void MainWindow::renderFriendList()
 {
     ui->friendList->clear();
-    
-    for (const QJsonValue &value : friends) {
-        QJsonObject friendObj = value.toObject();
-        QString username = friendObj["username"].toString();
-        QString nickname = friendObj["nickname"].toString();
-        int status = friendObj["status"].toInt();
-        
-        QListWidgetItem *item = new QListWidgetItem(ui->friendList);
-        item->setData(Qt::UserRole, username);
-        item->setData(Qt::UserRole + 1, status == 1 ? "在线" : "离线");
-        
-        QString displayName = nickname.isEmpty() ? username : nickname;
-        item->setData(Qt::UserRole + 2, displayName);
-        item->setSizeHint(QSize(0, 60));
 
-        refreshFriendItemUnread(item);
+    for (const FriendInfo &info : m_friends.friends()) {
+        QListWidgetItem *item = new QListWidgetItem(ui->friendList);
+        item->setData(Qt::UserRole, info.username);
+        item->setSizeHint(QSize(0, 60));
+        item->setText(QStringLiteral("%1 - %2").arg(info.displayName(), info.statusText()));
+        item->setIcon(QIcon(UiKit::avatar(info.displayName(), UiKit::kAvatarBlue,
+                                          m_friends.hasUnread(info.username))));
     }
 
-    // 列表重建后重新应用当前的搜索过滤，避免输入框里的关键字被忽略
+    // 列表重建后重新应用搜索过滤，并同步当前会话标题（在线状态不再停留在旧值）
     applyFriendFilter();
+    renderChatHeader();
+}
+
+void MainWindow::renderUnreadBadge(const QString &username)
+{
+    QListWidgetItem *item = findFriendItem(username);
+    if (!item) {
+        return;  // 列表里还没有这个人：等列表刷新时按未读数统一渲染
+    }
+
+    const FriendInfo info = m_friends.find(username);
+    item->setIcon(QIcon(UiKit::avatar(info.displayName(), UiKit::kAvatarBlue,
+                                      m_friends.hasUnread(username))));
+}
+
+void MainWindow::renderChatHeader()
+{
+    if (currentChatFriend.isEmpty()) {
+        ui->chatTitleLabel->setText(QString::fromUtf8("选择好友开始聊天"));
+        return;
+    }
+
+    const FriendInfo info = m_friends.find(currentChatFriend);
+    if (!info.isValid()) {
+        // 好友已被删除、或列表里已经没有这个人：收掉会话，不留过期标题
+        resetChatView();
+        return;
+    }
+
+    ui->chatTitleLabel->setText(QStringLiteral("%1 (%2)")
+                                    .arg(info.displayName(), info.statusText()));
 }
 
 void MainWindow::applyFriendFilter()
@@ -501,58 +543,10 @@ QListWidgetItem* MainWindow::findFriendItem(const QString &username) const
     return nullptr;
 }
 
-void MainWindow::refreshFriendItemUnread(QListWidgetItem *item)
-{
-    if (!item) return;
-
-    QString username = item->data(Qt::UserRole).toString();
-    QString status = item->data(Qt::UserRole + 1).toString();
-    QString displayName = item->data(Qt::UserRole + 2).toString();
-    if (displayName.isEmpty()) {
-        displayName = username;
-    }
-
-    bool hasUnread = m_unreadCounts.value(username, 0) > 0;
-    item->setText(QString("%1 - %2").arg(displayName, status));
-    // 红点绘制在头像右下角徽标上，避免在文本里拼 HTML（QListWidgetItem 不支持富文本）
-    setFriendItemAvatar(item, displayName, hasUnread);
-}
-
-void MainWindow::setFriendItemAvatar(QListWidgetItem *item, const QString &displayName, bool unread)
-{
-    QPixmap avatar(40, 40);
-    avatar.fill(QColor(100, 149, 237));
-
-    {
-        QPainter painter(&avatar);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont("Arial", 16, QFont::Bold));
-        painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
-    }
-
-    if (unread) {
-        // 未读红点徽标：头像右下角的红色圆点
-        QPainter painter(&avatar);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(Qt::white, 1.5));
-        painter.setBrush(QColor(0xE5, 0x39, 0x35));
-        painter.drawEllipse(QRectF(25.5, 25.5, 12, 12));
-    }
-
-    item->setIcon(QIcon(avatar));
-}
-
 void MainWindow::updateFriendRequestButton()
 {
     if (m_unreadFriendRequests > 0) {
-        QPixmap dot(12, 12);
-        dot.fill(Qt::transparent);
-        QPainter painter(&dot);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0xE5, 0x39, 0x35));
-        painter.drawEllipse(0, 0, 12, 12);
-        ui->friendRequestsBtn->setIcon(QIcon(dot));
+        ui->friendRequestsBtn->setIcon(QIcon(UiKit::dot(12)));
         ui->friendRequestsBtn->setIconSize(QSize(12, 12));
     } else {
         ui->friendRequestsBtn->setIcon(QIcon());
@@ -581,123 +575,31 @@ void MainWindow::showFriendRequestsDialog()
     ChatSession::instance().requestPendingRequests();
 }
 
-void MainWindow::showPendingRequestsDialog(const QJsonArray &requests)
+void MainWindow::appendMessage(const QString &text, bool isSelf, qint64 timestamp)
 {
-    QDialog dialog(this);
-    dialog.setWindowTitle(QString::fromUtf8("好友请求"));
-    dialog.setMinimumSize(400, 300);
-    
-    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
-    
-    QLabel *titleLabel = new QLabel(QString::fromUtf8("待处理的好友请求 (%1)").arg(requests.size()));
-    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;");
-    mainLayout->addWidget(titleLabel);
-    
-    QListWidget *requestList = new QListWidget();
-    requestList->setIconSize(QSize(40, 40));
-    
-    if (requests.isEmpty()) {
-        QLabel *emptyLabel = new QLabel(QString::fromUtf8("暂无待处理的好友请求"));
-        emptyLabel->setAlignment(Qt::AlignCenter);
-        emptyLabel->setStyleSheet("color: #999; padding: 20px;");
-        mainLayout->addWidget(emptyLabel);
-    } else {
-        for (const QJsonValue &value : requests) {
-            QJsonObject request = value.toObject();
-            QString username = request["username"].toString();
-            QString nickname = request["nickname"].toString();
-            QString displayName = nickname.isEmpty() ? username : nickname;
-            
-            QListWidgetItem *item = new QListWidgetItem(requestList);
-            item->setData(Qt::UserRole, username);
-            item->setText(QString("%1 (%2)").arg(displayName, username));
-            item->setSizeHint(QSize(0, 50));
-            
-            QPixmap avatar(40, 40);
-            avatar.fill(QColor(255, 152, 0));
-            QPainter painter(&avatar);
-            painter.setPen(Qt::white);
-            painter.setFont(QFont("Arial", 16, QFont::Bold));
-            painter.drawText(avatar.rect(), Qt::AlignCenter, displayName.left(1));
-            item->setIcon(QIcon(avatar));
-        }
-        
-        mainLayout->addWidget(requestList);
-        
-        QHBoxLayout *buttonLayout = new QHBoxLayout();
-        
-        QPushButton *acceptBtn = new QPushButton(QString::fromUtf8("接受"));
-        acceptBtn->setStyleSheet("background-color: #4CAF50; color: white; padding: 8px 16px;");
-        
-        QPushButton *rejectBtn = new QPushButton(QString::fromUtf8("拒绝"));
-        rejectBtn->setStyleSheet("background-color: #f44336; color: white; padding: 8px 16px;");
-        
-        QPushButton *closeBtn = new QPushButton(QString::fromUtf8("关闭"));
-        closeBtn->setStyleSheet("background-color: #9E9E9E; color: white; padding: 8px 16px;");
-        
-        buttonLayout->addWidget(acceptBtn);
-        buttonLayout->addWidget(rejectBtn);
-        buttonLayout->addStretch();
-        buttonLayout->addWidget(closeBtn);
-        mainLayout->addLayout(buttonLayout);
-        
-        connect(acceptBtn, &QPushButton::clicked, [&]() {
-            QListWidgetItem *currentItem = requestList->currentItem();
-            if (!currentItem) {
-                QMessageBox::warning(&dialog, QString::fromUtf8("提示"), QString::fromUtf8("请先选择一个好友请求"));
-                return;
-            }
-            QString username = currentItem->data(Qt::UserRole).toString();
-            ChatSession::instance().acceptFriend(username);
-            delete requestList->takeItem(requestList->row(currentItem));
-        });
-        
-        connect(rejectBtn, &QPushButton::clicked, [&]() {
-            QListWidgetItem *currentItem = requestList->currentItem();
-            if (!currentItem) {
-                QMessageBox::warning(&dialog, QString::fromUtf8("提示"), QString::fromUtf8("请先选择一个好友请求"));
-                return;
-            }
-            QString username = currentItem->data(Qt::UserRole).toString();
-            ChatSession::instance().rejectFriend(username);
-            delete requestList->takeItem(requestList->row(currentItem));
-        });
-        
-        connect(closeBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
-    }
-    
-    dialog.exec();
-}
+    const QString timeText = timestamp > 0
+        ? QDateTime::fromSecsSinceEpoch(timestamp).toString(QStringLiteral("MM-dd hh:mm"))
+        : QTime::currentTime().toString(QStringLiteral("hh:mm"));
 
-void MainWindow::appendMessage(const QString &nickname, const QString &message, bool isSelf,
-                               qint64 timestamp)
-{
-    Q_UNUSED(nickname);
-    QString time;
-    if (timestamp > 0) {
-        time = QDateTime::fromSecsSinceEpoch(timestamp).toString("MM-dd hh:mm");
-    } else {
-        time = QTime::currentTime().toString("hh:mm");
+    // 不能用 QTextBrowser::append()：它会把上一段的块格式复制给新段落，
+    // 于是只要第一条消息是右对齐，后面收到的消息也会跟着右对齐
+    //（写在 HTML 里的 text-align 从第二条消息起就不再生效）。
+    // 这里自己建段并显式设置对齐，让每条消息的左右只由 isSelf 决定。
+    QTextDocument *doc = ui->messageBrowser->document();
+    QTextCursor cursor(doc);
+    cursor.movePosition(QTextCursor::End);
+    if (!doc->isEmpty()) {
+        cursor.insertBlock();
     }
-    
-    QString html;
-    if (isSelf) {
-        html = QString(
-            "<div style='text-align:right; margin:8px;'>"
-            "<span style='font-size:10px; color:#999;'>%1 </span>"
-            "<span style='background-color:#95EC69; padding:8px 12px; border-radius:10px; display:inline-block; max-width:70%;'>%2</span>"
-            "</div>"
-        ).arg(time, message.toHtmlEscaped().replace("\n", "<br>"));
-    } else {
-        html = QString(
-            "<div style='text-align:left; margin:8px;'>"
-            "<span style='background-color:#FFFFFF; padding:8px 12px; border-radius:10px; display:inline-block; max-width:70%;'>%1</span>"
-            "<span style='font-size:10px; color:#999;'> %2</span>"
-            "</div>"
-        ).arg(message.toHtmlEscaped().replace("\n", "<br>"), time);
-    }
-    
-    ui->messageBrowser->append(html);
+
+    cursor.insertHtml(UiKit::messageBubble(text, isSelf, timeText));
+
+    QTextBlockFormat format;
+    format.setAlignment(isSelf ? Qt::AlignRight : Qt::AlignLeft);
+    format.setTopMargin(6);
+    format.setBottomMargin(6);
+    cursor.setBlockFormat(format);
+
     ui->messageBrowser->verticalScrollBar()->setValue(
         ui->messageBrowser->verticalScrollBar()->maximum());
 }

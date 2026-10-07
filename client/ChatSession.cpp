@@ -4,6 +4,7 @@
 #include "TcpClient.h"
 
 #include <QDebug>
+#include <QMetaMethod>
 #include <QTimer>
 
 ChatSession& ChatSession::instance()
@@ -302,10 +303,21 @@ void ChatSession::onMessageReceived(const Message &msg)
         break;
 
     case MessageType::MSG_TEXT:
-        emit textReceived(body["sender"].toString(),
-                          body["content"].toString(),
-                          body["timestamp"].toVariant().toLongLong());
+    {
+        IncomingText text;
+        text.sender    = body["sender"].toString();
+        text.content   = body["content"].toString();
+        text.timestamp = body["timestamp"].toVariant().toLongLong();
+
+        // 还没有界面在听（登录刚成功、主窗口尚未构造）时先存起来，
+        // 等界面就绪后由 takePendingTexts() 补发
+        if (isSignalConnected(QMetaMethod::fromSignal(&ChatSession::textReceived))) {
+            emit textReceived(text.sender, text.content, text.timestamp);
+        } else {
+            m_pendingIncoming.append(text);
+        }
         break;
+    }
 
     case MessageType::RSP_TEXT:
         handleTextSendResult(msg.sequence(), body);
@@ -346,6 +358,13 @@ void ChatSession::handleTextSendResult(uint32_t sequence, const QJsonObject &bod
     }
 }
 
+QList<ChatSession::IncomingText> ChatSession::takePendingTexts()
+{
+    QList<IncomingText> pending;
+    pending.swap(m_pendingIncoming);
+    return pending;
+}
+
 void ChatSession::onConnected()
 {
     emit connected();
@@ -354,6 +373,7 @@ void ChatSession::onConnected()
 void ChatSession::onDisconnected()
 {
     m_pendingTexts.clear();
+    m_pendingIncoming.clear();
     m_pendingReadFriend.clear();
     m_loggedIn = false;
     emit disconnected();
