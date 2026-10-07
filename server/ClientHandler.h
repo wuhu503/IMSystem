@@ -18,7 +18,7 @@ public:
     qint64 userId() const;
     void setUserId(qint64 id);
 
-    // 登录用户名：登录时缓存下来，避免每条消息都去数据库查一次
+    // 登录用户名
     QString username() const;
     void setUsername(const QString &username);
 
@@ -27,13 +27,13 @@ public:
 
     QTcpSocket* socket() const;
 
-    // 连接建立时的 socket 描述符（断开后 socketDescriptor() 会变成 -1，详见 .cpp）
+    // 连接建立时的socket描述符
     qintptr descriptor() const;
 
-    // 清理登录态（退出登录/被踢时调用）
+    // 清理登录态
     void resetLoginState();
 
-    // 是否已经超过空闲阈值（nowMs 由调用方传入，便于批量扫描时共用同一时刻）
+    // 是否已经超过空闲阈值
     bool isIdle(qint64 nowMs) const;
 
 signals:
@@ -55,7 +55,7 @@ private:
     QString m_username;
     QString m_token;
     QByteArray m_buffer;  //缓冲区
-    qintptr m_descriptor; //连接建立时的 socket 描述符（断开后 socketDescriptor() 会变成 -1）
+    qintptr m_descriptor; //连接建立时的socket描述符
     qint64 m_lastActiveMs = 0;
 };
 

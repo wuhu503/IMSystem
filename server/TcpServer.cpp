@@ -9,7 +9,7 @@ TcpServer::TcpServer(QObject *parent)
     : QTcpServer(parent)
     , m_idleTimer(new QTimer(this))
 {
-    // 周期性回收长时间没有任何报文的连接（对端掉线、拔网线、进程被强杀都不会发 FIN）
+    // 周期性回收长时间没有任何报文的连接(没有FIN的客户端断开)
     m_idleTimer->setInterval(IMConstants::kIdleSweepIntervalMs);
     connect(m_idleTimer, &QTimer::timeout, this, &TcpServer::onIdleCheck);
     m_idleTimer->start();
@@ -25,7 +25,7 @@ TcpServer::~TcpServer()
 
 bool TcpServer::startServer(quint16 port)
 {
-    // 尝试监听指定端口
+    // 监听端口
     if (!listen(QHostAddress::Any, port)) {
         qCritical() << "服务器启动失败:" << errorString();
         return false;
@@ -37,11 +37,11 @@ bool TcpServer::startServer(quint16 port)
 
 void TcpServer::stopServer()
 {
-    // 1. 停止监听
+    // 停止监听
     close();
     m_idleTimer->stop();
 
-    // 2. 清理所有客户端连接
+    // 清理所有客户端连接
     clearAllClients();
 
     qInfo() << "服务器已停止";
@@ -52,7 +52,7 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
 {
     qInfo() << "新连接请求, socketDescriptor:" << socketDescriptor;
 
-    //创建 socket 并设置描述符（无父对象，随后交由 ClientHandler 接管生命周期）
+    // 创建socket并设置描述符
     QTcpSocket *socket = new QTcpSocket;
     if (!socket->setSocketDescriptor(socketDescriptor)) {
         qWarning() << "设置 socket 描述符失败";
@@ -60,17 +60,17 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
         return;
     }
 
-    //给每一个连接创建ClientHandler
+    // 给每一个连接创建ClientHandler(递交socket的生命周期)
     ClientHandler *handler = new ClientHandler(socket, this);
 
-    //连接客户端断开，执行断开槽函数
+    // 连接客户端断开，执行断开槽函数
     connect(handler, &ClientHandler::clientDisconnect,
             this, &TcpServer::onClientDisconnected);
 
-    //把客户端存储到映射
+    // 把客户端存储到映射
     m_clients.insert(socketDescriptor, handler);
 
-    //发送新连接信号
+    // 发送新连接信号
     emit newClientConnected(socketDescriptor);
 
     qInfo() << "客户端连接成功, 当前连接数:" << m_clients.size();
@@ -82,21 +82,19 @@ void TcpServer::onClientDisconnected(qintptr socketDescriptor)
     // 从映射中查找并移除
     auto it = m_clients.find(socketDescriptor);
     if (it == m_clients.end()) {
-        // 正常情况下不会走到这里：一旦出现说明连接表与 handler 的生命周期脱节了，
-        // 会表现为 handler 泄漏，所以显式告警方便以后定位
         qWarning() << "断开连接时未找到对应客户端, descriptor:" << socketDescriptor
                    << ", 当前连接数:" << m_clients.size();
         emit clientDisconnected(socketDescriptor);
         return;
     }
 
-    // 获取 ClientHandler
+    // 获取ClientHandler
     ClientHandler *handler = it.value();
 
     // 从映射中移除
     m_clients.erase(it);
 
-    // 销毁 ClientHandler
+    // 销毁ClientHandler
     handler->deleteLater();
 
     qInfo() << "客户端断开, 当前连接数:" << m_clients.size();
@@ -110,7 +108,7 @@ void TcpServer::clearAllClients()
 {
     qInfo() << "清理所有客户端连接, 数量:" << m_clients.size();
 
-    // 遍历所有 ClientHandler 并销毁
+    // 遍历所有ClientHandler并销毁
     for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
         ClientHandler *handler = it.value();
         // 同步在线表，避免进程退出后 UserManager 里还留着已销毁的连接
@@ -129,7 +127,6 @@ void TcpServer::onIdleCheck()
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
     // 先收集再断链：disconnectFromHost() 可能同步触发 onClientDisconnected，
-    // 那会在遍历过程中修改 m_clients
     QList<ClientHandler *> idleHandlers;
     for (auto it = m_clients.constBegin(); it != m_clients.constEnd(); ++it) {
         if (it.value() && it.value()->isIdle(now)) {

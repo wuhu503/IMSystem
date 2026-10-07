@@ -30,8 +30,6 @@ private:
     UserManager(QObject *parent = nullptr);
     ~UserManager();
     
-    // 存 QPointer 而非裸指针：handler 若先于下线流程被销毁，弱引用会自动置空，
-    // 避免后面用悬垂指针去构造 QPointer（那是未定义行为）
     QMap<qint64, QPointer<ClientHandler>> m_onlineUsers;  // userId -> handler
     mutable QMutex m_mutex;
 };

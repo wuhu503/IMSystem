@@ -39,12 +39,9 @@ ClientHandler::ClientHandler(QTcpSocket *socket, QObject *parent)
     , m_userId(-1)
     , m_descriptor(-1)
 {
-    // 由 ClientHandler 接管 socket 生命周期，handler 销毁时连接对象一并释放
+    // 接管socket生命周期
     socket->setParent(this);
 
-    // 断开连接后 QTcpSocket::socketDescriptor() 会返回 -1（Qt 会先重置 socket 层再发
-    // disconnected 信号），因此必须在连接建立时就把描述符保存下来，否则 TcpServer
-    // 无法用它从连接表中找到本对象，导致 handler/socket 永远不会被销毁。
     m_descriptor = socket->socketDescriptor();
     m_lastActiveMs = QDateTime::currentMSecsSinceEpoch();
 
@@ -147,13 +144,12 @@ void ClientHandler::onReadyRead()
     m_buffer.append(m_socket->readAll());
     touch();
     
-    // 用读取偏移代替反复 remove(0, n)：后者在大量粘包时是 O(n²)
     int offset = 0;
     while (m_buffer.size() - offset >= HEADER_SIZE) {
         MessageHeader header;
         std::memcpy(&header, m_buffer.constData() + offset, HEADER_SIZE);
 
-        // 协议校验：magic / version / body 长度上限，违规直接断开
+        // 协议校验
         if (header.magic != PROTOCOL_MAGIC ||
             header.version != PROTOCOL_VERSION ||
             header.bodyLength > MAX_BODY_SIZE) {
