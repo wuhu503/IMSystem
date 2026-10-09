@@ -259,6 +259,3 @@ cmake --build build --target IMClient
 - [ ] 聊天记录下拉分页加载
 - [ ] 传输层加密（TLS）
 
-## 许可证
-
-MIT License
